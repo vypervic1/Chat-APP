@@ -1,0 +1,167 @@
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-hairline: var(--hairline);
+  --color-accent-a: var(--accent-a);
+  --color-accent-b: var(--accent-b);
+  --color-text-1: var(--text-1);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-danger: var(--danger);
+  --color-online: var(--online);
+  --color-bubble-recv: var(--bubble-recv);
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Sora", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  --bg: #080b10;
+  --surface: #10151d;
+  --surface-2: #161d28;
+  --surface-3: #1d2531;
+  --hairline: #212a38;
+  --accent-a: #20e3a2;
+  --accent-b: #7c5cff;
+  --accent-grad: linear-gradient(135deg, var(--accent-a) 0%, var(--accent-b) 100%);
+  --text-1: #eef1f6;
+  --text-2: #8d97ab;
+  --text-3: #5a6478;
+  --danger: #ff5470;
+  --online: #2be5a8;
+  --bubble-recv: #182130;
+  --safe-top: 44px;
+  --safe-bottom: 30px;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at 15% -10%, rgba(124,92,255,.25), transparent 45%),
+    radial-gradient(circle at 90% 0%, rgba(32,227,162,.14), transparent 40%),
+    #05070a;
+  font-family: 'Inter', sans-serif;
+  color: var(--text-1);
+}
+
+/* Custom glow animations and other dynamic helper classes */
+@keyframes pulseGlow {
+  0%, 100% { opacity: .5; transform: scale(.9); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+.coil-glow {
+  animation: pulseGlow 2.6s ease-in-out infinite;
+}
+
+@keyframes drawCoil {
+  to { stroke-dashoffset: 0; }
+}
+
+#coilSvg path {
+  stroke-dasharray: 340;
+  stroke-dashoffset: 340;
+  animation: drawCoil 1.6s cubic-bezier(.65,0,.35,1) forwards;
+}
+
+@keyframes loadBar {
+  0% { margin-left: -40%; }
+  100% { margin-left: 100%; }
+}
+
+.splash-bar i {
+  animation: loadBar 1.5s ease-in-out infinite;
+}
+
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: .5; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+.typing-dots span {
+  animation: typingBounce 1.2s infinite ease-in-out;
+}
+
+.typing-dots span:nth-child(2) { animation-delay: .15s; }
+.typing-dots span:nth-child(3) { animation-delay: .3s; }
+
+/* Custom scrollbars hidden */
+::-webkit-scrollbar {
+  display: none;
+}
+
+/* Dynamic theme custom overrides */
+:root {
+  --text-1: #eef1f6;
+  --text-2: #8d97ab;
+  --text-3: #5a6478;
+}
+
+/* Theme overrides for hardcoded Tailwind classes */
+.bg-\[\#080b10\] { background-color: var(--bg) !important; }
+.bg-\[\#10151d\] { background-color: var(--surface) !important; }
+.bg-\[\#161d28\] { background-color: var(--surface-2) !important; }
+.bg-\[\#1d2531\] { background-color: var(--surface-3) !important; }
+.border-\[\#212a38\] { border-color: var(--hairline) !important; }
+
+.text-\[\#eef1f6\] { color: var(--text-1) !important; }
+.text-\[\#8d97ab\] { color: var(--text-2) !important; }
+.text-\[\#5a6478\] { color: var(--text-3) !important; }
+.bg-\[\#182130\] { background-color: var(--bubble-recv) !important; }
+
+/* Special dynamic styling for the Light Theme */
+:root[data-theme="light"] {
+  --bg: #f3f5f9;
+  --surface: #ffffff;
+  --surface-2: #e2e8f0;
+  --surface-3: #cbd5e1;
+  --hairline: #e2e8f0;
+  --accent-a: #10b981;
+  --accent-b: #6366f1;
+  --text-1: #0f172a;
+  --text-2: #475569;
+  --text-3: #64748b;
+  --bubble-recv: #f1f5f9;
+}
+
+:root[data-theme="light"] body {
+  background: #f3f5f9 !important;
+  color: var(--text-1) !important;
+}
+
+:root[data-theme="light"] .text-white {
+  color: var(--text-1) !important;
+}
+
+:root[data-theme="light"] .bg-black\/50,
+:root[data-theme="light"] .bg-black\/60 {
+  background-color: rgba(241, 245, 249, 0.8) !important;
+  color: var(--text-1) !important;
+}
+
+:root[data-theme="light"] .bg-\[\#161d28\]\/60 {
+  background-color: rgba(255, 255, 255, 0.7) !important;
+}
+
+:root[data-theme="light"] .bg-\[\#080b10\]\/95 {
+  background-color: rgba(243, 245, 249, 0.95) !important;
+}
+
+:root[data-theme="light"] .bg-\[\#0c1017\]\/95 {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+}
+
+:root[data-theme="light"] .bg-\[\#030509\]\/85 {
+  background-color: rgba(241, 245, 249, 0.85) !important;
+}
+
+:root[data-theme="light"] .text-gray-100,
+:root[data-theme="light"] .text-gray-200,
+:root[data-theme="light"] .text-gray-300 {
+  color: var(--text-2) !important;
+}

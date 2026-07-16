@@ -1,0 +1,6 @@
+{
+  "name": "VyperVic",
+  "description": "A sleek, real-time Android chatting platform featuring secure private messages, community channels, file sharing, voice notes, and live audio/video calling.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
