@@ -155,7 +155,7 @@ export default function AuthScreen({ onAuthComplete }: AuthScreenProps) {
         } else {
           // Fallback if upsert failed but session is active
           setIsSignUp(false);
-          setErrorMsg('Account created! Please establish a secure link below to login.');
+          setErrorMsg('Account created! Please sign in below to login.');
         }
       } else {
         // Sign In
@@ -255,7 +255,7 @@ export default function AuthScreen({ onAuthComplete }: AuthScreenProps) {
           Vyper<span className="bg-gradient-to-r from-[#20e3a2] to-[#7c5cff] bg-clip-text text-transparent">Vic</span>
         </h1>
         <p className="text-xs text-[#8d97ab] font-medium tracking-wide mt-1">
-          {isSignUp ? 'Create your secure portal identity' : 'Enter the encrypted chat dimension'}
+          {isSignUp ? 'Create your account' : 'Enter the chat dimension'}
         </p>
       </div>
 
@@ -443,7 +443,7 @@ export default function AuthScreen({ onAuthComplete }: AuthScreenProps) {
                     <span>Configuring channel...</span>
                   </>
                 ) : (
-                  <span>{isSignUp ? 'GENERATE KEYPAIR & JOIN' : 'ESTABLISH SECURE LINK'}</span>
+                  <span>{isSignUp ? 'REGISTER & JOIN' : 'SIGN IN TO PORTAL'}</span>
                 )}
               </button>
             </motion.form>
@@ -465,7 +465,7 @@ export default function AuthScreen({ onAuthComplete }: AuthScreenProps) {
         >
           {isSignUp ? (
             <span>
-              Already have a secure key?{' '}
+              Already have an account?{' '}
               <span className="text-[#20e3a2] underline underline-offset-4 decoration-1 font-bold">
                 Connect identity
               </span>

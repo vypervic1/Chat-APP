@@ -37,6 +37,60 @@ if (typeof window !== 'undefined') {
       event.preventDefault();
     }
   });
+
+  // Automatically find and hide any floating "offline" banners/overlays injected by the host or browser
+  const hideOfflineBanners = () => {
+    const elements = document.getElementsByTagName('*');
+    for (let i = 0; i < elements.length; i++) {
+      const el = elements[i] as HTMLElement;
+      if (el.tagName === 'BODY' || el.tagName === 'HTML' || el.id === 'root') continue;
+      
+      const text = (el.innerText || el.textContent || '').toLowerCase();
+      if (
+        text.includes("currently offline") ||
+        text.includes("you're currently offline") ||
+        text.includes("you are currently offline")
+      ) {
+        // Check if any child elements also contain the offline text. 
+        // We only hide the leaf-most elements to prevent hiding parent elements.
+        let hasChildWithOfflineText = false;
+        for (let j = 0; j < el.children.length; j++) {
+          const childText = (el.children[j].textContent || '').toLowerCase();
+          if (
+            childText.includes("currently offline") ||
+            childText.includes("you're currently offline") ||
+            childText.includes("you are currently offline")
+          ) {
+            hasChildWithOfflineText = true;
+            break;
+          }
+        }
+        if (!hasChildWithOfflineText) {
+          el.style.setProperty('display', 'none', 'important');
+          el.style.setProperty('opacity', '0', 'important');
+          el.style.setProperty('pointer-events', 'none', 'important');
+          el.style.setProperty('visibility', 'hidden', 'important');
+        }
+      }
+    }
+  };
+
+  const observer = new MutationObserver(() => {
+    hideOfflineBanners();
+  });
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      hideOfflineBanners();
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+    });
+  } else {
+    hideOfflineBanners();
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+  }
+
+  // Periodic cleanup check just in case
+  setInterval(hideOfflineBanners, 1000);
 }
 
 createRoot(document.getElementById('root')!).render(

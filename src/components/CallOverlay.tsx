@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
 import { Profile, Call } from '../types';
-import { PhoneOff, Phone, Mic, MicOff, Video, VideoOff, ShieldAlert, Minimize2, Maximize2, RefreshCw, UserPlus, Smile } from 'lucide-react';
+import { PhoneOff, Phone, Mic, MicOff, Video, VideoOff, ShieldAlert, Minimize2, Maximize2, RefreshCw, UserPlus, Smile, Circle, Square } from 'lucide-react';
+import { saveFileToLocalStorage } from '../utils/indexedDB';
 
 interface CallOverlayProps {
   currentCall: Call;
@@ -37,6 +38,90 @@ export default function CallOverlay({
   const [showAddParticipant, setShowAddParticipant] = useState(false);
   const [focusedParticipantId, setFocusedParticipantId] = useState<string | null>(null);
 
+  // Group call dynamic active participants presence
+  const [activeGroupParticipants, setActiveGroupParticipants] = useState<Record<string, { id: string, username: string, display_name: string, avatar_url: string | null, lastSeen: number }>>({});
+
+  useEffect(() => {
+    if (callStatus !== 'accepted' || currentCall.receiver_id !== 'general') return;
+
+    // 1. Broadcast our presence immediately, and then every 3 seconds
+    const sendHeartbeat = () => {
+      if (sendBroadcastEvent) {
+        sendBroadcastEvent('vyper_group_call_heartbeat', {
+          callId: currentCall.id,
+          profile: {
+            id: currentUser.id,
+            username: currentUser.username,
+            display_name: currentUser.display_name,
+            avatar_url: currentUser.avatar_url,
+          }
+        });
+      }
+    };
+
+    sendHeartbeat();
+    const broadcastInterval = setInterval(sendHeartbeat, 3000);
+
+    // 2. Setup event listener for incoming heartbeats
+    const handleHeartbeat = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.callId === currentCall.id && detail.profile) {
+        const p = detail.profile;
+        if (p.id === currentUser.id) return; // skip ourselves
+        
+        setActiveGroupParticipants((prev) => ({
+          ...prev,
+          [p.id]: {
+            id: p.id,
+            username: p.username,
+            display_name: p.display_name,
+            avatar_url: p.avatar_url,
+            lastSeen: Date.now(),
+          }
+        }));
+      }
+    };
+
+    // 3. Setup event listener for when a participant explicitly leaves
+    const handleLeave = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.callId === currentCall.id && detail.userId) {
+        setActiveGroupParticipants((prev) => {
+          if (!prev[detail.userId]) return prev;
+          const updated = { ...prev };
+          delete updated[detail.userId];
+          return updated;
+        });
+      }
+    };
+
+    window.addEventListener('vyper_group_call_heartbeat', handleHeartbeat);
+    window.addEventListener('vyper_group_call_leave', handleLeave);
+
+    // 4. Periodically prune participants who haven't sent a heartbeat for 8 seconds
+    const pruneInterval = setInterval(() => {
+      const now = Date.now();
+      setActiveGroupParticipants((prev) => {
+        let changed = false;
+        const updated = { ...prev };
+        Object.keys(updated).forEach((id) => {
+          if (now - updated[id].lastSeen > 8000) {
+            delete updated[id];
+            changed = true;
+          }
+        });
+        return changed ? updated : prev;
+      });
+    }, 2000);
+
+    return () => {
+      clearInterval(broadcastInterval);
+      clearInterval(pruneInterval);
+      window.removeEventListener('vyper_group_call_heartbeat', handleHeartbeat);
+      window.removeEventListener('vyper_group_call_leave', handleLeave);
+    };
+  }, [callStatus, currentCall.id, currentCall.receiver_id, currentUser, sendBroadcastEvent]);
+
   // Live interactive reactions (Requirement 3.2)
   interface ActiveReaction {
     id: string;
@@ -62,6 +147,153 @@ export default function CallOverlay({
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Call Recording State (Requirement 2 & 3)
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingType, setRecordingType] = useState<'screen' | 'voice' | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const streamToRecordRef = useRef<MediaStream | null>(null);
+
+  const startRecording = async (type: 'screen' | 'voice') => {
+    try {
+      recordedChunksRef.current = [];
+      let recordStream: MediaStream;
+
+      if (type === 'screen') {
+        try {
+          // Attempt display/screen recording with audio
+          recordStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        } catch (e) {
+          console.warn("Screen capture failed/denied, falling back to active streams:", e);
+          // Fallback: combine all tracks from local and remote streams
+          const tracks: MediaStreamTrack[] = [];
+          if (localVideoRef.current?.srcObject instanceof MediaStream) {
+            (localVideoRef.current.srcObject as MediaStream).getTracks().forEach(t => tracks.push(t));
+          }
+          if (remoteVideoRef.current?.srcObject instanceof MediaStream) {
+            (remoteVideoRef.current.srcObject as MediaStream).getTracks().forEach(t => tracks.push(t));
+          }
+          if (tracks.length === 0 && streamRef.current) {
+            streamRef.current.getTracks().forEach(t => tracks.push(t));
+          }
+          if (tracks.length === 0) {
+            // Last resort fallback
+            recordStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          } else {
+            recordStream = new MediaStream(tracks);
+          }
+        }
+      } else {
+        // Voice/Audio only recording
+        const tracks: MediaStreamTrack[] = [];
+        if (localVideoRef.current?.srcObject instanceof MediaStream) {
+          (localVideoRef.current.srcObject as MediaStream).getAudioTracks().forEach(t => tracks.push(t));
+        }
+        if (remoteVideoRef.current?.srcObject instanceof MediaStream) {
+          (remoteVideoRef.current.srcObject as MediaStream).getAudioTracks().forEach(t => tracks.push(t));
+        }
+        if (tracks.length === 0 && streamRef.current) {
+          streamRef.current.getAudioTracks().forEach(t => tracks.push(t));
+        }
+        if (tracks.length === 0) {
+          // Last resort fallback
+          recordStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } else {
+          recordStream = new MediaStream(tracks);
+        }
+      }
+
+      streamToRecordRef.current = recordStream;
+
+      let options = {};
+      if (type === 'screen') {
+        const mimeTypes = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
+        const chosenType = mimeTypes.find(t => MediaRecorder.isTypeSupported(t)) || '';
+        if (chosenType) options = { mimeType: chosenType };
+      } else {
+        const mimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg', 'audio/mp4'];
+        const chosenType = mimeTypes.find(t => MediaRecorder.isTypeSupported(t)) || '';
+        if (chosenType) options = { mimeType: chosenType };
+      }
+
+      const mediaRecorder = new MediaRecorder(recordStream, options);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const blobType = type === 'screen' ? 'video/webm' : 'audio/webm';
+        const blob = new Blob(recordedChunksRef.current, { type: blobType });
+
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = async () => {
+          const base64data = reader.result as string;
+          const ext = 'webm';
+          const fileName = `call_record_${Date.now()}.${ext}`;
+          const fileType = type === 'screen' ? 'video/webm' : 'audio/webm';
+
+          // Save to IndexedDB
+          await saveFileToLocalStorage(fileName, fileType, base64data);
+
+          // Forward to user's private chat
+          const chatRoomId = `me:${currentUser.id}`;
+          const textMessage = `🎥 Call Recording [${type === 'screen' ? 'Video/Screen' : 'Voice'}] saved automatically.`;
+
+          const msgId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `msg_${Date.now()}`;
+          const dbPayload = {
+            id: msgId,
+            chat_id: chatRoomId,
+            sender_id: currentUser.id,
+            text: textMessage,
+            file_name: fileName,
+            file_type: fileType,
+            file_data: base64data,
+            is_voice: type === 'voice',
+          };
+
+          try {
+            const { error } = await supabase.from('messages').insert(dbPayload);
+            if (error) console.error("Failed to forward call record to private chat:", error);
+
+            // Notify local UI
+            window.dispatchEvent(new CustomEvent('vyper_new_local_message', { detail: dbPayload }));
+          } catch (err) {
+            console.error("Error inserting recording:", err);
+          }
+        };
+
+        // Stop all track media streams
+        if (streamToRecordRef.current) {
+          streamToRecordRef.current.getTracks().forEach(track => track.stop());
+          streamToRecordRef.current = null;
+        }
+      };
+
+      mediaRecorder.start(1000);
+      setIsRecording(true);
+      setRecordingType(type);
+    } catch (err) {
+      console.warn("Failed to start call recording:", err);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (e) {
+        console.error("Error stopping recorder:", e);
+      }
+    }
+    setIsRecording(false);
+    setRecordingType(null);
+  };
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const earlySignalingQueueRef = useRef<any[]>([]);
   const pendingCandidatesRef = useRef<any[]>([]);
@@ -185,6 +417,19 @@ export default function CallOverlay({
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [callStatus]);
+
+  // Save active duration to localStorage so call logs have live accurate durations
+  useEffect(() => {
+    if (duration > 0) {
+      try {
+        const stored = JSON.parse(localStorage.getItem('vyper_call_durations') || '{}');
+        stored[currentCall.id] = duration;
+        localStorage.setItem('vyper_call_durations', JSON.stringify(stored));
+      } catch (e) {
+        console.warn('Failed to persist call duration:', e);
+      }
+    }
+  }, [duration, currentCall.id]);
 
   // Ringing Auto-timeout: Ends the call automatically if not answered in 30 seconds to prevent hanging
   useEffect(() => {
@@ -509,7 +754,7 @@ export default function CallOverlay({
           .catch((err) => {
             if (withVideo) {
               console.warn('WebRTC: Video capture failed, gracefully falling back to audio only:', err);
-              setErrorMessage('Camera blocked or busy. Connecting via secure audio stream.');
+              setErrorMessage('Camera blocked or busy. Connecting via audio stream.');
               return navigator.mediaDevices.getUserMedia({ video: false, audio: true });
             }
             throw err;
@@ -643,6 +888,10 @@ export default function CallOverlay({
       }
 
       if (sendBroadcastEvent) {
+        sendBroadcastEvent('vyper_group_call_leave', {
+          callId: currentCall.id,
+          userId: currentUser.id,
+        });
         sendBroadcastEvent('call_status_update', {
           callId: currentCall.id,
           status: 'ended',
@@ -770,19 +1019,21 @@ export default function CallOverlay({
               className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white"
               style={{ background: getAvatarStyle(seed) }}
             >
-              {getInitials(peerProfile.display_name || peerProfile.username || '')}
+              {getInitials(currentCall.receiver_id === 'general' ? '#General' : (peerProfile.display_name || peerProfile.username || ''))}
             </div>
             <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[#20e3a2] rounded-full border-2 border-[#10151d] flex items-center justify-center animate-pulse" />
           </div>
           <div className="flex flex-col min-w-0">
             <span className="text-[12.5px] font-bold text-white truncate max-w-[130px]">
-              {peerProfile.display_name || peerProfile.username}
+              {currentCall.receiver_id === 'general' ? '#General Call' : (peerProfile.display_name || peerProfile.username)}
             </span>
             <span className="text-[10px] text-[#20e3a2] font-mono leading-none mt-0.5">
               {callStatus === 'ringing' ? (
                 <span className="animate-pulse">Ringing...</span>
               ) : (
-                formatDuration(duration)
+                currentCall.receiver_id === 'general'
+                  ? `${formatDuration(duration)} • ${Object.keys(activeGroupParticipants).length + 1} Active`
+                  : formatDuration(duration)
               )}
             </span>
           </div>
@@ -837,7 +1088,7 @@ export default function CallOverlay({
           <div className="w-12 h-1.5 bg-[#212a38] rounded-full mx-auto mb-4" />
           
           <h3 className="text-sm font-bold text-white mb-1 font-display">Add Friend to Connection</h3>
-          <p className="text-[10.5px] text-[#8d97ab] mb-4">Select an active user to patch into this cryptographically secure stream.</p>
+          <p className="text-[10.5px] text-[#8d97ab] mb-4">Select an active user to patch into this call stream.</p>
           
           <div className="flex-1 overflow-y-auto space-y-2.5 max-h-[280px] pb-6 scrollbar-none">
             {availableFriends.length === 0 ? (
@@ -900,9 +1151,20 @@ export default function CallOverlay({
 
   const renderParticipantsGrid = () => {
     // Current user's video preview, plus other active participant profiles
+    const groupParticipantsList = Object.values(activeGroupParticipants).map((p: any) => ({
+      id: p.id,
+      name: p.display_name || p.username,
+      display_name: p.display_name,
+      isLocal: false,
+      avatar_url: p.avatar_url,
+      username: p.username
+    }));
+
     const allInCall = [
       { id: currentUser.id, name: 'You (Admin)', display_name: 'You', isLocal: true, avatar_url: currentUser.avatar_url, username: currentUser.username },
-      ...participants.map((p) => ({ id: p.id, name: p.display_name || p.username, display_name: p.display_name, isLocal: false, avatar_url: p.avatar_url, username: p.username }))
+      ...(currentCall.receiver_id === 'general'
+        ? groupParticipantsList
+        : participants.map((p) => ({ id: p.id, name: p.display_name || p.username, display_name: p.display_name, isLocal: false, avatar_url: p.avatar_url, username: p.username })))
     ];
 
     const focusedId = focusedParticipantId || (participants[0]?.id);
@@ -1108,7 +1370,7 @@ export default function CallOverlay({
           {/* Call Security Badge */}
           <span className="bg-[#10151d]/80 border border-[#212a38] text-[10px] font-bold tracking-widest text-[#20e3a2] uppercase px-4 py-1.5 rounded-full mb-6 backdrop-blur-md flex items-center gap-1.5 shadow-md">
             <span className="w-1.5 h-1.5 rounded-full bg-[#20e3a2] animate-pulse" />
-            {currentCall.type === 'video' ? 'SECURE VIDEO CALL' : 'SECURE VOICE CALL'}
+            {currentCall.type === 'video' ? 'VIDEO CALL' : 'VOICE CALL'}
           </span>
 
           <div className="relative w-28 h-28 mb-5">
@@ -1155,7 +1417,7 @@ export default function CallOverlay({
       {/* Encryption banner */}
       <div className="relative z-10 flex items-center gap-2 self-center bg-black/45 border border-[#212a38]/80 rounded-xl px-4 py-2 text-[10.5px] text-[#8d97ab] shadow-sm backdrop-blur-md">
         <ShieldAlert className="w-3.5 h-3.5 text-[#20e3a2]" />
-        <span>E2E cryptographically keypaired stream link</span>
+        <span>Direct connection established</span>
       </div>
 
       {/* Button Controls Area */}
@@ -1163,7 +1425,11 @@ export default function CallOverlay({
         {/* Dynamic call timer for accepted state overlay */}
         {callStatus === 'accepted' && (
           <span className="text-xs text-[#8d97ab] font-mono tracking-wider bg-black/50 border border-[#212a38]/60 px-4 py-1.5 rounded-full backdrop-blur-md">
-            Duration: {formatDuration(duration)} • {participants.length + 1} Callers
+            Duration: {formatDuration(duration)} • {
+              currentCall.receiver_id === 'general'
+                ? `${Object.keys(activeGroupParticipants).length + 1} Active Participants`
+                : `${participants.length + 1} Callers`
+            }
           </span>
         )}
 

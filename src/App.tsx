@@ -14,6 +14,8 @@ import ChatScreen from './components/ChatScreen';
 import SearchScreen from './components/SearchScreen';
 import SettingsScreen from './components/SettingsScreen';
 import CallOverlay from './components/CallOverlay';
+import FullscreenProfile from './components/FullscreenProfile';
+import { saveFileToLocalStorage } from './utils/indexedDB';
 
 // Helper to gracefully merge/append optimistic and database messages, preventing duplicate rendering
 export function addOrUpdateMessage(prev: Message[], newMsg: Message): Message[] {
@@ -54,6 +56,13 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [currentUser, setCurrentUser] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Real-time synchronization state
+  const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
+  const [messagesList, setMessagesList] = useState<Message[]>([]);
+  const [activeCall, setActiveCall] = useState<Call | null>(null);
+  const [groupCallStatuses, setGroupCallStatuses] = useState<Record<string, string>>({});
+  const [callHistory, setCallHistory] = useState<Call[]>([]);
 
   const [appTheme, setAppTheme] = useState<string>(() => {
     return localStorage.getItem('vypervic_app_theme') || 'cosmic';
@@ -101,6 +110,25 @@ export default function App() {
     applyAppTheme(appTheme);
     localStorage.setItem('vypervic_app_theme', appTheme);
   }, [appTheme]);
+
+  // Request notification permissions on first open (PWA-to-Android conversion/Capacitor compatibility)
+  useEffect(() => {
+    if (currentUser) {
+      const askPermission = async () => {
+        if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+          try {
+            const perm = await requestNotificationPermission();
+            setNotifPermission(perm);
+          } catch (err) {
+            console.warn('Failed to automatically request notification permission:', err);
+          }
+        }
+      };
+      // Delay slightly on first load so interface is visible and polished
+      const timer = setTimeout(askPermission, 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [currentUser]);
 
   // Active Push Notification states
   const [notifications, setNotifications] = useState<PushNotification[]>(() => {
@@ -246,6 +274,7 @@ export default function App() {
   const [activeScreen, setActiveScreen] = useState<'chatList' | 'chat' | 'search' | 'settings'>('chatList');
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [selectedPeerProfile, setSelectedPeerProfile] = useState<Profile | undefined>(undefined);
+  const [activeProfileView, setActiveProfileView] = useState<{ type: 'user' | 'group' | 'general'; data?: any } | null>(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   useEffect(() => {
@@ -261,11 +290,67 @@ export default function App() {
     };
   }, []);
 
-  // Real-time synchronization state
-  const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
-  const [messagesList, setMessagesList] = useState<Message[]>([]);
-  const [activeCall, setActiveCall] = useState<Call | null>(null);
-  const [groupCallStatuses, setGroupCallStatuses] = useState<Record<string, string>>({});
+  // Register custom listeners for local UI/recording events
+  useEffect(() => {
+    const handleDeleteMessageEvent = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.messageId) {
+        setMessagesList((prev) => prev.filter((m) => m.id !== detail.messageId));
+      }
+    };
+    
+    const handleNewLocalMessage = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail) {
+        setMessagesList((prev) => addOrUpdateMessage(prev, detail));
+      }
+    };
+
+    window.addEventListener('vyper_delete_message', handleDeleteMessageEvent);
+    window.addEventListener('vyper_new_local_message', handleNewLocalMessage);
+
+    return () => {
+      window.removeEventListener('vyper_delete_message', handleDeleteMessageEvent);
+      window.removeEventListener('vyper_new_local_message', handleNewLocalMessage);
+    };
+  }, []);
+
+  // Automatically save all media, documents & files and voice records (sent or received) to device local storage
+  const processedFileMsgIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    messagesList.forEach((msg) => {
+      if (msg.file_data && msg.file_name && !processedFileMsgIdsRef.current.has(msg.id)) {
+        processedFileMsgIdsRef.current.add(msg.id);
+        // Save to IndexedDB
+        saveFileToLocalStorage(msg.file_name, msg.file_type || 'application/octet-stream', msg.file_data, msg.id)
+          .then(() => {
+            console.log(`Automatically cached/saved ${msg.file_name} to local storage`);
+          })
+          .catch((e) => {
+            console.warn(`Failed to auto-cache ${msg.file_name}:`, e);
+          });
+      }
+
+      // Automatically parse and save links to local storage
+      if (msg.text && !msg.file_data && !processedFileMsgIdsRef.current.has(msg.id + '_link')) {
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        const urls = msg.text.match(urlRegex);
+        if (urls && urls.length > 0) {
+          processedFileMsgIdsRef.current.add(msg.id + '_link');
+          urls.forEach((url, index) => {
+            saveFileToLocalStorage(url, 'link', url, `${msg.id}_link_${index}`)
+              .then(() => {
+                console.log(`Automatically cached link ${url} to local storage`);
+              })
+              .catch((e) => {
+                console.warn(`Failed to auto-cache link ${url}:`, e);
+              });
+          });
+        }
+      }
+    });
+  }, [messagesList]);
 
   // New Chat Features State
   const [typingState, setTypingState] = useState<Record<string, Record<string, { username: string; timestamp: number }>>>({});
@@ -948,9 +1033,53 @@ export default function App() {
       }
     };
 
+    const fetchCallHistory = async () => {
+      try {
+        let combined: any[] = [];
+        
+        // 1. Fetch direct calls involving the current user as caller or receiver
+        const { data: directData, error: directError } = await supabase
+          .from('calls')
+          .select('*')
+          .or(`caller_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
+          .order('created_at', { ascending: false })
+          .limit(40);
+          
+        if (!directError && directData) {
+          combined = [...directData];
+        } else if (directError) {
+          console.warn('Direct calls fetch error:', directError);
+        }
+
+        // 2. Fetch group calls (where receiver_id is 'general') inside a separate try-catch block
+        // to gracefully recover if receiver_id is of type UUID in PostgreSQL.
+        try {
+          const { data: groupData, error: groupError } = await supabase
+            .from('calls')
+            .select('*')
+            .eq('receiver_id', 'general')
+            .order('created_at', { ascending: false })
+            .limit(25);
+            
+          if (!groupError && groupData) {
+            combined = [...combined, ...groupData];
+          }
+        } catch (gErr) {
+          console.warn('Group call fetch bypassed (receiver_id is likely UUID type):', gErr);
+        }
+
+        // Sort combined array in descending order by created_at
+        combined.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        setCallHistory(combined.slice(0, 40));
+      } catch (err) {
+        console.warn('Failed to fetch initial call history:', err);
+      }
+    };
+
     fetchProfiles();
     fetchMessages();
     fetchCallStatuses();
+    fetchCallHistory();
 
     const checkAndTriggerIncomingCall = (messageText: string) => {
       if (!messageText || !messageText.startsWith('_vyper_call_::')) return;
@@ -1071,6 +1200,10 @@ export default function App() {
           if (newCall.receiver_id === currentUserRef.current?.id && newCall.status === 'ringing') {
             setActiveCall(newCall);
           }
+          setCallHistory((prev) => {
+            if (prev.some((c) => c.id === newCall.id)) return prev;
+            return [newCall, ...prev];
+          });
         }
       )
       .on(
@@ -1086,6 +1219,9 @@ export default function App() {
               setActiveCall(updatedCall);
             }
           }
+          setCallHistory((prev) => {
+            return prev.map((c) => c.id === updatedCall.id ? updatedCall : c);
+          });
         }
       )
       .subscribe();
@@ -1176,6 +1312,16 @@ export default function App() {
         if (!payload) return;
         window.dispatchEvent(new CustomEvent('vyper_call_live_reaction', { detail: payload }));
       })
+      .on('broadcast', { event: 'vyper_group_call_heartbeat' }, (response: any) => {
+        const payload = response.payload;
+        if (!payload) return;
+        window.dispatchEvent(new CustomEvent('vyper_group_call_heartbeat', { detail: payload }));
+      })
+      .on('broadcast', { event: 'vyper_group_call_leave' }, (response: any) => {
+        const payload = response.payload;
+        if (!payload) return;
+        window.dispatchEvent(new CustomEvent('vyper_group_call_leave', { detail: payload }));
+      })
       .on('broadcast', { event: 'call_invite' }, (response: any) => {
         const payload = response.payload;
         if (!payload || !currentUserRef.current) return;
@@ -1231,6 +1377,12 @@ export default function App() {
         // Trigger notification if not in the current active chat
         triggerPushNotification(message);
       })
+      .on('broadcast', { event: 'delete_message' }, (response: any) => {
+        const payload = response.payload;
+        if (payload && payload.messageId) {
+          setMessagesList((prev) => prev.filter((m) => m.id !== payload.messageId));
+        }
+      })
       .on('broadcast', { event: 'vyper_group_created' }, (response: any) => {
         const payload = response.payload;
         if (!payload) return;
@@ -1280,27 +1432,6 @@ export default function App() {
         .subscribe();
     }
 
-    // E. Global Event Listener for Simulated local pushes from Settings
-    const handleLocalPushSim = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail) {
-        // Construct mock message to trigger unified notifications engine
-        const mockMsg: Message = {
-          id: 'sim_notif_' + Date.now(),
-          chat_id: detail.type === 'mention' ? 'general' : `dm:system:test`,
-          sender_id: '00000000-0000-0000-0000-000000000000',
-          text: detail.body,
-          file_name: null,
-          file_type: null,
-          file_data: null,
-          is_voice: false,
-          created_at: new Date().toISOString(),
-        };
-        triggerPushNotification(mockMsg);
-      }
-    };
-    window.addEventListener('vypervic_push_simulation', handleLocalPushSim);
-
     chatUpdatesChannelRef.current = chatUpdatesChannel;
 
     return () => {
@@ -1311,7 +1442,6 @@ export default function App() {
       if (triggeredPushesChannel) {
         supabase.removeChannel(triggeredPushesChannel);
       }
-      window.removeEventListener('vypervic_push_simulation', handleLocalPushSim);
     };
   }, [currentUser]);
 
@@ -1735,12 +1865,6 @@ export default function App() {
 
   return (
     <div className="phone relative w-[390px] h-[844px] max-h-[96vh] bg-[#080b10] rounded-[52px] border-[10px] border-black shadow-[0_0_0_2px_#232a35,0_40px_80px_-20px_rgba(0,0,0,0.7),0_0_120px_-40px_rgba(124,92,255,0.35)] overflow-hidden">
-      {isOffline && (
-        <div className="absolute top-12 left-0 right-0 bg-[#ff5470] text-black text-[10.5px] font-black tracking-widest uppercase text-center py-2 z-[1000] animate-pulse flex items-center justify-center gap-1.5 shadow-lg select-none border-b border-[#080b10]/20">
-          <AlertTriangle className="w-3.5 h-3.5" />
-          <span>Offline Connection Mode — Operating on Local Cache</span>
-        </div>
-      )}
       {/* Sleek, Realistic Smartphone Status Bar */}
       <div 
         className="absolute top-0 left-0 right-0 h-12 bg-transparent flex items-center justify-center select-none z-50 pointer-events-none"
@@ -1956,6 +2080,7 @@ export default function App() {
             {activeScreen === 'chatList' && (
               <ChatListScreen
                 currentUser={currentUser}
+                isOffline={isOffline}
                 onSelectChat={(chatId, peer) => {
                   setSelectedChatId(chatId);
                   setSelectedPeerProfile(peer);
@@ -1971,6 +2096,7 @@ export default function App() {
                 unreadNotificationsCount={getUnifiedFeed().length}
                 groups={groups}
                 groupCallStatuses={groupCallStatuses}
+                onViewProfileDetail={(type, data) => setActiveProfileView({ type, data })}
               />
             )}
 
@@ -1989,6 +2115,7 @@ export default function App() {
                 groupCallStatuses={groupCallStatuses}
                 messagesList={messagesList}
                 allProfiles={allProfiles}
+                callHistory={callHistory}
                 typingUsers={typingState[selectedChatId] || {}}
                 readReceipts={readReceipts}
                 reactions={reactions}
@@ -2018,6 +2145,7 @@ export default function App() {
                   setSelectedPeerProfile(undefined);
                   setActiveScreen('chatList');
                 }}
+                onViewProfileDetail={(type, data) => setActiveProfileView({ type, data })}
               />
             )}
 
@@ -2091,11 +2219,43 @@ export default function App() {
                   } catch (e) {
                     console.warn('Failed to sign out of Supabase:', e);
                   }
-                  setCurrentUser(null);
+                  // Reset states
+                  setMessagesList([]);
+                  setAllProfiles([]);
+                  setActiveCall(null);
+                  setGroupCallStatuses({});
+                  setCallHistory([]);
+                  setNotifications([]);
+                  setSelectedChatId(null);
+                  setSelectedPeerProfile(undefined);
                   setActiveScreen('chatList');
+                  
+                  // Clear specific localStorage entries
+                  Object.keys(localStorage).forEach((key) => {
+                    if (
+                      (key.startsWith('vypervic_') && key !== 'vypervic_app_theme') ||
+                      key.startsWith('vyper_') ||
+                      key.includes('supabase') ||
+                      key.startsWith('sb-')
+                    ) {
+                      localStorage.removeItem(key);
+                    }
+                  });
+                  setCurrentUser(null);
                 }}
                 onUpdateProfile={(updated) => setCurrentUser(updated)}
                 onToast={showToast}
+              />
+            )}
+
+            {/* Full-Screen Profile details */}
+            {activeProfileView && (
+              <FullscreenProfile
+                type={activeProfileView.type}
+                data={activeProfileView.data}
+                onClose={() => setActiveProfileView(null)}
+                currentUser={currentUser}
+                allProfiles={allProfiles}
               />
             )}
 

@@ -14,8 +14,18 @@ import {
   Database, 
   RefreshCw, 
   Send, 
-  AlertTriangle 
+  AlertTriangle,
+  HardDrive,
+  Download,
+  Play,
+  Pause,
+  Trash2,
+  Link as LinkIcon,
+  Globe,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
+import { getAllSavedFiles, deleteSavedFile, SavedFile } from '../utils/indexedDB';
 import { 
   checkNotificationPermission, 
   requestNotificationPermission, 
@@ -58,10 +68,105 @@ export default function SettingsScreen({
   const [pushTokens, setPushTokens] = useState<PushToken[]>([]);
   const [loadingTokens, setLoadingTokens] = useState(false);
   const [registeringDevice, setRegisteringDevice] = useState(false);
-  const [simulatingDM, setSimulatingDM] = useState(false);
-  const [simulatingMention, setSimulatingMention] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Local files cache state
+  const [localFiles, setLocalFiles] = useState<SavedFile[]>([]);
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+
+  // Device Storage Tabs state
+  const [activeStorageTab, setActiveStorageTab] = useState<'media' | 'docs' | 'links'>('media');
+
+  // Deletion Confirmation States (Strict Requirement: all deletion must ask confirmation for delete or cancel)
+  const [fileToDelete, setFileToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [tokenToDeregister, setTokenToDeregister] = useState<{ id: string; deviceName: string } | null>(null);
+
+  useEffect(() => {
+    loadLocalFiles();
+  }, []);
+
+  const loadLocalFiles = async () => {
+    const files = await getAllSavedFiles();
+    setLocalFiles(files);
+  };
+
+  const confirmDeleteFile = async () => {
+    if (!fileToDelete) return;
+    const { id, name } = fileToDelete;
+    if (playingAudioId === id) {
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+      }
+      setPlayingAudioId(null);
+    }
+    await deleteSavedFile(id);
+    onToast(`Deleted ${name} from local storage`);
+    setFileToDelete(null);
+    loadLocalFiles();
+  };
+
+  const confirmDeregisterToken = async () => {
+    if (!tokenToDeregister) return;
+    const { id, deviceName } = tokenToDeregister;
+    if (id.startsWith('local_')) {
+      const localTokensKey = `vypervic_local_tokens_${currentUser.id}`;
+      const localTokens: PushToken[] = JSON.parse(localStorage.getItem(localTokensKey) || '[]');
+      const filtered = localTokens.filter(t => t.id !== id);
+      try {
+        localStorage.setItem(localTokensKey, JSON.stringify(filtered));
+      } catch (storageErr) {
+        console.warn('Failed to remove token from local storage:', storageErr);
+      }
+      setPushTokens(prev => prev.filter(t => t.id !== id));
+      onToast(`Device ${deviceName} removed from local sandbox.`);
+    } else {
+      const success = await deletePushToken(id);
+      if (success) {
+        onToast(`Device ${deviceName} de-registered from Push server.`);
+        await loadPushTokens();
+      } else {
+        onToast('Failed to de-register token.');
+      }
+    }
+    setTokenToDeregister(null);
+  };
+
+  const handleDownloadLocalFile = (file: SavedFile) => {
+    const link = document.createElement('a');
+    link.href = file.fileData;
+    link.download = file.fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    onToast(`Downloaded ${file.fileName} to system downloads`);
+  };
+
+  const handleCopyLink = (url: string) => {
+    navigator.clipboard.writeText(url);
+    onToast('Link copied to clipboard!');
+  };
+
+  const handlePlayVoiceNote = (file: SavedFile) => {
+    if (playingAudioId === file.id) {
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+      }
+      setPlayingAudioId(null);
+    } else {
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+      }
+      const audio = new Audio(file.fileData);
+      audioPlayerRef.current = audio;
+      audio.play().catch(e => console.warn("Failed to play local voice file:", e));
+      setPlayingAudioId(file.id);
+      audio.onended = () => {
+        setPlayingAudioId(null);
+      };
+    }
+  };
 
   // Load push notifications state
   useEffect(() => {
@@ -133,119 +238,6 @@ export default function SettingsScreen({
       setRegisteringDevice(false);
     }
   };
-
-  const handleDeregisterToken = async (id: string) => {
-    if (id.startsWith('local_')) {
-      const localTokensKey = `vypervic_local_tokens_${currentUser.id}`;
-      const localTokens: PushToken[] = JSON.parse(localStorage.getItem(localTokensKey) || '[]');
-      const filtered = localTokens.filter(t => t.id !== id);
-      try {
-        localStorage.setItem(localTokensKey, JSON.stringify(filtered));
-      } catch (storageErr) {
-        console.warn('Failed to remove token from local storage:', storageErr);
-      }
-      setPushTokens(prev => prev.filter(t => t.id !== id));
-      onToast('Device removed from local sandbox.');
-      return;
-    }
-
-    const success = await deletePushToken(id);
-    if (success) {
-      onToast('Device de-registered from Push server.');
-      await loadPushTokens();
-    } else {
-      onToast('Failed to de-register token.');
-    }
-  };
-
-  const handleSimulateDM = async () => {
-    setSimulatingDM(true);
-    try {
-      // Find another user to be the sender
-      const peer = allProfiles.find(p => p.id !== currentUser.id) || {
-        id: '00000000-0000-0000-0000-000000000000',
-        username: 'vic_bot',
-        display_name: 'Vic Bot',
-        about: 'AI Companion',
-        avatar_url: null,
-        is_online: true,
-        last_seen: new Date().toISOString(),
-        created_at: new Date().toISOString()
-      };
-
-      const sortedIds = [currentUser.id, peer.id].sort();
-      const chatId = `dm:${sortedIds[0]}:${sortedIds[1]}`;
-
-      const { error } = await supabase.from('messages').insert({
-        chat_id: chatId,
-        sender_id: peer.id,
-        text: `Hey @${currentUser.username}, here is a simulated real-time push notification test! 📱🚀`,
-        is_voice: false,
-      });
-
-      if (error) {
-        // Fallback simulate locally by triggering event handler
-        throw error;
-      }
-      onToast('Direct message push triggered via Supabase Database trigger! 🔔');
-    } catch (e) {
-      // Simulate local DM fallback
-      onToast('Triggered local Direct Message push simulation!');
-      // Dispatch custom message event
-      const event = new CustomEvent('vypervic_push_simulation', {
-        detail: {
-          title: 'New message from Vic Bot',
-          body: `Hey @${currentUser.username}, here is a simulated real-time push notification test! 📱🚀`,
-          type: 'dm_message'
-        }
-      });
-      window.dispatchEvent(event);
-    } finally {
-      setSimulatingDM(false);
-    }
-  };
-
-  const handleSimulateMention = async () => {
-    setSimulatingMention(true);
-    try {
-      const peer = allProfiles.find(p => p.id !== currentUser.id) || {
-        id: '00000000-0000-0000-0000-000000000000',
-        username: 'vic_bot',
-        display_name: 'Vic Bot',
-        about: 'AI Companion',
-        avatar_url: null,
-        is_online: true,
-        last_seen: new Date().toISOString(),
-        created_at: new Date().toISOString()
-      };
-
-      const { error } = await supabase.from('messages').insert({
-        chat_id: 'general',
-        sender_id: peer.id,
-        text: `Yo, what's up group! @${currentUser.username} check out this community mention push notification! 🔥`,
-        is_voice: false,
-      });
-
-      if (error) {
-        throw error;
-      }
-      onToast('Mention push triggered via Supabase Database trigger! 📣');
-    } catch (e) {
-      onToast('Triggered local Community Mention push simulation!');
-      // Dispatch custom message event
-      const event = new CustomEvent('vypervic_push_simulation', {
-        detail: {
-          title: 'Vic Bot mentioned you in General',
-          body: `Yo, what's up group! @${currentUser.username} check out this community mention push notification! 🔥`,
-          type: 'mention'
-        }
-      });
-      window.dispatchEvent(event);
-    } finally {
-      setSimulatingMention(false);
-    }
-  };
-
 
   // Compute initials from name
   const getInitials = (name: string) => {
@@ -444,8 +436,8 @@ export default function SettingsScreen({
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h4 className="font-display font-bold text-sm text-white leading-tight">Secure App Theme</h4>
-              <p className="text-[11px] text-[#8d97ab] mt-0.5">Customize your cryptographic terminal visual style</p>
+              <h4 className="font-display font-bold text-sm text-white leading-tight">App Theme</h4>
+              <p className="text-[11px] text-[#8d97ab] mt-0.5">Customize your app visual style</p>
             </div>
           </div>
 
@@ -521,170 +513,167 @@ export default function SettingsScreen({
         </div>
 
         {/* ========================================================= */}
-        {/* ANDROID PUSH NOTIFICATIONS SETTINGS & SIMULATOR CONSOLE  */}
+        {/* DEVICE LOCAL STORAGE MEDIA MANAGER                       */}
         {/* ========================================================= */}
         <div className="mt-8 bg-[#161d28]/60 border border-[#212a38] rounded-3xl p-5 space-y-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="p-2 rounded-xl bg-[#20e3a2]/15 text-[#20e3a2]">
-                <Bell className="w-5 h-5" />
+                <HardDrive className="w-5 h-5" />
               </div>
               <div>
-                <h4 className="font-display font-bold text-sm text-white leading-tight">Android Push Notifications</h4>
-                <p className="text-[11px] text-[#8d97ab] mt-0.5">Reliable background FCM signaling</p>
+                <h4 className="font-display font-bold text-sm text-white leading-tight">Device Local Storage</h4>
+                <p className="text-[11px] text-[#8d97ab] mt-0.5">Media, documents, and web links</p>
               </div>
-            </div>
-            
-            {/* Status Indicator Badge */}
-            <div className={`px-2.5 py-1 rounded-full text-[10px] font-bold font-mono tracking-wider ${
-              permission === 'granted' 
-                ? 'bg-[#20e3a2]/10 text-[#20e3a2] border border-[#20e3a2]/20' 
-                : 'bg-[#ffb454]/10 text-[#ffb454] border border-[#ffb454]/20'
-            }`}>
-              {permission === 'granted' ? 'FCM READY' : 'PERMISSION REQUIRED'}
             </div>
           </div>
 
-          {/* Prompt to Request Notification Access */}
-          {permission !== 'granted' && (
-            <div className="p-3.5 bg-[#ffb454]/5 border border-[#ffb454]/15 rounded-2xl flex flex-col sm:flex-row gap-3 items-center justify-between">
-              <div className="flex gap-2.5 items-start">
-                <AlertTriangle className="w-4.5 h-4.5 text-[#ffb454] shrink-0 mt-0.5" />
-                <p className="text-[11.5px] text-[#ffb454]/90 leading-relaxed">
-                  Enable device notification permission to deliver chat message and community mention alerts in the background.
-                </p>
-              </div>
-              <button
-                onClick={handleRequestPermission}
-                className="px-3 py-1.5 bg-[#ffb454] hover:bg-[#ffb454]/90 text-[#241300] font-bold text-xs rounded-lg transition-colors whitespace-nowrap cursor-pointer"
-              >
-                Grant Access
-              </button>
-            </div>
-          )}
-
-          {/* FCM Registered Devices Section */}
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold tracking-[1.2px] text-[#5a6478] uppercase">
-                Active Push Terminals
-              </span>
-              <button
-                onClick={loadPushTokens}
-                disabled={loadingTokens}
-                className="text-[#8d97ab] hover:text-white transition-colors"
-                title="Refresh active devices"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${loadingTokens ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-
-            {pushTokens.length > 0 ? (
-              <div className="space-y-2">
-                {pushTokens.map((token) => (
-                  <div 
-                    key={token.id} 
-                    className="flex items-center justify-between p-3 bg-[#080b10]/80 border border-[#212a38]/60 rounded-2xl"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <Smartphone className="w-4.5 h-4.5 text-[#7c5cff]" />
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-white truncate leading-tight">
-                          {token.device_name}
-                        </p>
-                        <p className="text-[10px] text-[#5a6478] font-mono truncate mt-0.5">
-                          {token.fcm_token.substring(0, 16)}...{token.fcm_token.substring(token.fcm_token.length - 12)}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleDeregisterToken(token.id)}
-                      className="p-1.5 rounded-lg text-[#ff5470] hover:bg-[#ff5470]/10 transition-colors cursor-pointer"
-                      title="De-register device"
-                    >
-                      <Trash className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="p-4 bg-[#080b10]/40 border border-[#212a38]/30 rounded-2xl text-center">
-                <Smartphone className="w-6 h-6 text-[#5a6478] mx-auto mb-1.5 opacity-60" />
-                <p className="text-xs text-[#8d97ab] font-medium">No registered Android/Web terminals found</p>
-                <p className="text-[10px] text-[#5a6478] mt-1 max-w-[280px] mx-auto leading-normal">
-                  FCM background deliveries require registering a push signaling token.
-                </p>
-              </div>
-            )}
-
+          {/* Tabs Splitter: Media, Docs, Links */}
+          <div className="flex bg-[#080b10]/80 p-1 rounded-2xl border border-[#212a38]/60">
             <button
-              onClick={handleRegisterDevice}
-              disabled={registeringDevice}
-              className="w-full flex items-center justify-center gap-2 py-2.5 border border-dashed border-[#20e3a2]/40 hover:border-[#20e3a2] hover:bg-[#20e3a2]/5 text-[#20e3a2] font-semibold text-xs rounded-2xl transition-all cursor-pointer"
+              onClick={() => setActiveStorageTab('media')}
+              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeStorageTab === 'media'
+                  ? 'bg-[#7c5cff] text-white shadow-md'
+                  : 'text-[#8d97ab] hover:text-white'
+              }`}
             >
-              {registeringDevice ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Smartphone className="w-3.5 h-3.5" />
-              )}
-              Register Current Android Device (FCM Token)
+              Media
+            </button>
+            <button
+              onClick={() => setActiveStorageTab('docs')}
+              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeStorageTab === 'docs'
+                  ? 'bg-[#7c5cff] text-white shadow-md'
+                  : 'text-[#8d97ab] hover:text-white'
+              }`}
+            >
+              Docs
+            </button>
+            <button
+              onClick={() => setActiveStorageTab('links')}
+              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeStorageTab === 'links'
+                  ? 'bg-[#7c5cff] text-white shadow-md'
+                  : 'text-[#8d97ab] hover:text-white'
+              }`}
+            >
+              Links
             </button>
           </div>
 
-          {/* FCM Delivery Test Simulator Console */}
-          <div className="space-y-3 pt-2.5 border-t border-[#212a38]">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold tracking-[1.2px] text-[#5a6478] uppercase">
-                FCM Push Pipeline Simulator
-              </span>
-              <div className="flex items-center gap-1 text-[10px] text-[#20e3a2] font-semibold">
-                <Database className="w-3 h-3" />
-                <span>Trigger Live DB</span>
+          <div className="space-y-3">
+            {localFiles.filter(f => {
+              if (activeStorageTab === 'media') {
+                return f.fileType !== 'link' && (f.fileType.startsWith('image/') || f.fileType.startsWith('audio/') || f.fileType.startsWith('video/'));
+              } else if (activeStorageTab === 'docs') {
+                return f.fileType !== 'link' && !f.fileType.startsWith('image/') && !f.fileType.startsWith('audio/') && !f.fileType.startsWith('video/');
+              } else {
+                return f.fileType === 'link';
+              }
+            }).length > 0 ? (
+              <div className="max-h-[300px] overflow-y-auto space-y-2.5 pr-1">
+                {localFiles
+                  .filter(f => {
+                    if (activeStorageTab === 'media') {
+                      return f.fileType !== 'link' && (f.fileType.startsWith('image/') || f.fileType.startsWith('audio/') || f.fileType.startsWith('video/'));
+                    } else if (activeStorageTab === 'docs') {
+                      return f.fileType !== 'link' && !f.fileType.startsWith('image/') && !f.fileType.startsWith('audio/') && !f.fileType.startsWith('video/');
+                    } else {
+                      return f.fileType === 'link';
+                    }
+                  })
+                  .map((file) => (
+                    <div 
+                      key={file.id}
+                      className="flex items-center justify-between p-3 bg-[#080b10]/60 border border-[#212a38]/60 rounded-2xl gap-3 animate-fade-in"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        {/* Left icon depending on file type */}
+                        <div className="w-9 h-9 rounded-xl bg-[#212a38]/80 flex items-center justify-center shrink-0 overflow-hidden">
+                          {file.fileType === 'link' ? (
+                            <LinkIcon className="w-4 h-4 text-[#20e3a2]" />
+                          ) : file.fileType.startsWith('image/') ? (
+                            <img src={file.fileData} className="w-full h-full object-cover" />
+                          ) : file.fileType.startsWith('audio/') ? (
+                            <button
+                              onClick={() => handlePlayVoiceNote(file)}
+                              className="p-1 rounded-full text-[#20e3a2] hover:bg-[#20e3a2]/15 transition-all cursor-pointer flex items-center justify-center"
+                            >
+                              {playingAudioId === file.id ? (
+                                <Pause className="w-4 h-4 fill-current animate-pulse" />
+                              ) : (
+                                <Play className="w-4 h-4 fill-current ml-0.5" />
+                              )}
+                            </button>
+                          ) : (
+                            <Database className="w-4.5 h-4.5 text-[#8d97ab]" />
+                          )}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-bold text-white truncate">
+                            {file.fileName}
+                          </p>
+                          <p className="text-[10px] text-[#5a6478] font-mono mt-0.5 truncate">
+                            {new Date(file.savedAt).toLocaleDateString()} • {file.fileType === 'link' ? 'WEB LINK' : file.fileType.split('/')[1]?.toUpperCase() || 'FILE'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        {file.fileType === 'link' ? (
+                          <>
+                            <button
+                              onClick={() => handleCopyLink(file.fileData)}
+                              className="p-1.5 rounded-lg text-[#20e3a2] hover:bg-[#20e3a2]/10 transition-colors cursor-pointer"
+                              title="Copy URL link"
+                            >
+                              <Copy className="w-4 h-4" />
+                            </button>
+                            <a
+                              href={file.fileData}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1.5 rounded-lg text-[#7c5cff] hover:bg-[#7c5cff]/10 transition-colors cursor-pointer"
+                              title="Open link in browser"
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </a>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => handleDownloadLocalFile(file)}
+                            className="p-1.5 rounded-lg text-[#20e3a2] hover:bg-[#20e3a2]/10 transition-colors cursor-pointer"
+                            title="Download to system"
+                          >
+                            <Download className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setFileToDelete({ id: file.id, name: file.fileName })}
+                          className="p-1.5 rounded-lg text-[#ff5470] hover:bg-[#ff5470]/10 transition-colors cursor-pointer"
+                          title="Delete permanently"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
               </div>
-            </div>
-
-            <p className="text-[11px] text-[#8d97ab] leading-normal">
-              Insert simulated messages directly into the PostgreSQL database. The Supabase trigger detects the action and delivers the background push.
-            </p>
-
-            <div className="grid grid-cols-2 gap-2.5">
-              <button
-                onClick={handleSimulateDM}
-                disabled={simulatingDM}
-                className="flex items-center justify-center gap-2 p-3 bg-[#1d2531]/40 border border-[#212a38] hover:border-[#7c5cff]/60 hover:bg-[#7c5cff]/5 text-xs font-semibold rounded-2xl text-white transition-colors cursor-pointer"
-              >
-                {simulatingDM ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[#7c5cff]" />
-                ) : (
-                  <Send className="w-3.5 h-3.5 text-[#7c5cff]" />
-                )}
-                Simulate Direct Msg
-              </button>
-
-              <button
-                onClick={handleSimulateMention}
-                disabled={simulatingMention}
-                className="flex items-center justify-center gap-2 p-3 bg-[#1d2531]/40 border border-[#212a38] hover:border-[#20e3a2]/60 hover:bg-[#20e3a2]/5 text-xs font-semibold rounded-2xl text-white transition-colors cursor-pointer"
-              >
-                {simulatingMention ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[#20e3a2]" />
-                ) : (
-                  <Send className="w-3.5 h-3.5 text-[#20e3a2]" />
-                )}
-                Simulate Mention
-              </button>
-            </div>
-          </div>
-
-          {/* Quick SQL Blueprint Guide */}
-          <div className="p-3.5 bg-[#080b10] border border-[#212a38] rounded-2xl flex gap-2.5 items-start">
-            <Database className="w-4.5 h-4.5 text-[#20e3a2] shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <h5 className="text-xs font-bold text-white">Database Triggers Configured</h5>
-              <p className="text-[10px] text-[#8d97ab] leading-normal">
-                Supabase trigger configuration details are exported in <span className="text-[#20e3a2] font-mono font-bold">/supabase_notifications.sql</span>. Running this SQL in your Supabase Editor sets up the Postgres triggers for background pushes.
-              </p>
-            </div>
+            ) : (
+              <div className="p-5 bg-[#080b10]/30 border border-dashed border-[#212a38] rounded-2xl text-center">
+                <HardDrive className="w-7 h-7 text-[#5a6478] mx-auto mb-2 opacity-50" />
+                <p className="text-xs text-[#8d97ab] font-medium">No items found in this section</p>
+                <p className="text-[10.5px] text-[#5a6478] mt-1 max-w-[260px] mx-auto leading-normal">
+                  {activeStorageTab === 'media'
+                    ? 'All media files, voice records, and call recordings are automatically indexed here.'
+                    : activeStorageTab === 'docs'
+                      ? 'Document uploads, texts, and certificates are cached here.'
+                      : 'All hyperlinks parsed from messages are indexed here.'}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -719,7 +708,7 @@ export default function SettingsScreen({
             </h3>
             <p className="text-[#8d97ab] text-[13.5px] leading-relaxed mb-5">
               {showConfirmModal === 'logout'
-                ? 'You can always sign back in with your email and password.'
+                ? 'You can always sign back in with your credentials.'
                 : 'This permanently removes your profile, chats and settings. This action cannot be undone.'}
             </p>
             <div className="flex gap-2.5">
@@ -743,6 +732,38 @@ export default function SettingsScreen({
           </div>
         </div>
       )}
+
+      {/* File Deletion Confirmation Modal */}
+      {fileToDelete && (
+        <div className="absolute inset-0 bg-[#030509]/72 backdrop-blur-[3px] flex items-center justify-center z-[200]">
+          <div className="w-[82%] bg-[#161d28] border border-[#212a38] rounded-[20px] p-5 text-center animate-zoom-in">
+            <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-3.5 text-[#ff5470]">
+              <Trash2 className="w-5 h-5" />
+            </div>
+            <h3 className="font-display font-bold text-base text-white mb-2">
+              Permanently delete this file?
+            </h3>
+            <p className="text-[#8d97ab] text-xs leading-relaxed mb-5">
+              Are you sure you want to delete <span className="text-white font-mono font-bold">"{fileToDelete.name}"</span>? This will permanently erase it from local cache.
+            </p>
+            <div className="flex gap-2.5">
+              <button
+                onClick={() => setFileToDelete(null)}
+                className="flex-1 py-2.5 bg-[#1d2531] text-[#eef1f6] rounded-xl font-bold text-xs cursor-pointer hover:bg-opacity-80"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteFile}
+                className="flex-1 py-2.5 bg-[#ff5470] text-white rounded-xl font-bold text-xs cursor-pointer hover:bg-opacity-80"
+              >
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

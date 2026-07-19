@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Profile, Message, Group } from '../types';
-import { Search, Settings, MessageSquare, Shield, Circle, User, Bell, Users } from 'lucide-react';
+import { Search, Settings, MessageSquare, Shield, Circle, User, Bell, Users, WifiOff } from 'lucide-react';
+import { getContactDisplayName } from '../utils/customNames';
 
 interface ChatListScreenProps {
   currentUser: Profile;
@@ -15,6 +16,8 @@ interface ChatListScreenProps {
   unreadNotificationsCount: number;
   groups?: Group[];
   groupCallStatuses?: Record<string, string>;
+  isOffline?: boolean;
+  onViewProfileDetail?: (type: 'user' | 'group' | 'general', data?: any) => void;
 }
 
 export default function ChatListScreen({
@@ -30,7 +33,15 @@ export default function ChatListScreen({
   unreadNotificationsCount,
   groups = [],
   groupCallStatuses = {},
+  isOffline = false,
+  onViewProfileDetail,
 }: ChatListScreenProps) {
+  const [customNamesTick, setCustomNamesTick] = useState(0);
+  useEffect(() => {
+    const handleUpdate = () => setCustomNamesTick((t) => t + 1);
+    window.addEventListener('vyper_custom_names_updated', handleUpdate);
+    return () => window.removeEventListener('vyper_custom_names_updated', handleUpdate);
+  }, []);
 
   // 1. Compute initials from display name or username
   const getInitials = (name: string) => {
@@ -80,8 +91,25 @@ export default function ChatListScreen({
 
   // 4. Find the last message and calculate unread info for a specific chat ID
   const getChatPreview = (chatId: string) => {
+    const draftKey = `vyper_draft_${currentUser.id}_${chatId}`;
+    const draftText = localStorage.getItem(draftKey);
+    const hasDraft = draftText && draftText.trim() !== '';
+
     const chatMsgs = messagesList.filter((m) => m.chat_id === chatId);
-    if (chatMsgs.length === 0) return null;
+    if (chatMsgs.length === 0 && !hasDraft) return null;
+
+    if (hasDraft) {
+      return {
+        id: `draft:${chatId}`,
+        text: draftText!.trim(),
+        time: 'Draft',
+        senderId: currentUser.id,
+        timestamp: Date.now() + 100000, // Put drafts at the very top!
+        created_at: new Date().toISOString(),
+        isDraft: true,
+      };
+    }
+
     const lastMsg = chatMsgs[chatMsgs.length - 1];
     
     let textPreview = lastMsg.text || '';
@@ -112,6 +140,7 @@ export default function ChatListScreen({
       senderId: lastMsg.sender_id,
       timestamp: new Date(lastMsg.created_at).getTime(),
       created_at: lastMsg.created_at,
+      isDraft: false,
     };
   };
 
@@ -123,7 +152,7 @@ export default function ChatListScreen({
       name?: string;
       icon?: string;
       peer?: Profile;
-      lastMsg: { id: string; text: string; time: string; senderId: string; timestamp: number; created_at: string } | null;
+      lastMsg: { id: string; text: string; time: string; senderId: string; timestamp: number; created_at: string; isDraft?: boolean } | null;
       unreadCount: number;
     }> = [];
 
@@ -171,16 +200,25 @@ export default function ChatListScreen({
       const timeB = b.lastMsg?.timestamp || 0;
       return timeB - timeA;
     });
-  }, [allProfiles, messagesList, currentUser, groups]);
+  }, [allProfiles, messagesList, currentUser, groups, customNamesTick]);
 
   // General chat preview details
-  const generalPreview = useMemo(() => getChatPreview('general'), [messagesList]);
+  const generalPreview = useMemo(() => getChatPreview('general'), [messagesList, customNamesTick]);
 
   return (
     <div className="absolute inset-0 flex flex-col bg-[#080b10] text-[#eef1f6] z-10 select-none">
       {/* Header Container */}
       <div className="pt-[calc(var(--safe-top)+10px)] px-5 pb-4 flex items-center justify-between border-b border-[#212a38] bg-[#080b10]/95 backdrop-blur-md sticky top-0 z-20">
         <div className="flex items-center gap-2.5">
+          {isOffline && (
+            <div 
+              className="w-8 h-8 rounded-full bg-[#ff5470]/10 border border-[#ff5470]/30 flex items-center justify-center text-[#ff5470] animate-pulse shadow-[0_0_8px_rgba(255,84,112,0.25)] shrink-0"
+              title="Internet connection lost"
+            >
+              <WifiOff className="w-4 h-4" />
+            </div>
+          )}
+
           {/* Glowing icon */}
           <div className="relative w-8 h-8 flex items-center justify-center">
             <div className="absolute inset-[-4px] rounded-full bg-[radial-gradient(circle,rgba(32,227,162,0.2),transparent_70%)] blur-[2px]" />
@@ -235,19 +273,6 @@ export default function ChatListScreen({
 
       {/* Main Conversation List */}
       <div className="flex-1 overflow-y-auto px-4 py-4 pb-12 space-y-5">
-        {/* Encrypted Notice banner */}
-        <div className="bg-[#161d28]/40 border border-[#212a38]/80 rounded-2xl p-3.5 flex items-start gap-3">
-          <div className="p-1.5 rounded-lg bg-[#20e3a2]/10 text-[#20e3a2] mt-0.5">
-            <Shield className="w-4 h-4" />
-          </div>
-          <div>
-            <h4 className="text-[12.5px] font-bold text-white leading-tight">Peer-to-Peer Encryption</h4>
-            <p className="text-[11px] text-[#8d97ab] mt-1 leading-normal">
-              Your message streams and biometric calling parameters are cryptographically secured.
-            </p>
-          </div>
-        </div>
-
         {/* Channels/Global Chat section */}
         <div className="space-y-2">
           <h3 className="text-[11px] font-bold tracking-[1.5px] text-[#5a6478] uppercase px-1">Channels & Private Spaces</h3>
@@ -283,7 +308,14 @@ export default function ChatListScreen({
                 onClick={() => onSelectChat(meChatId, currentUser)}
                 className="w-full flex items-center gap-3.5 p-3.5 rounded-2xl bg-[#161d28]/60 hover:bg-[#161d28] border border-[#212a38]/40 transition-colors cursor-pointer text-left group"
               >
-                <div className="w-12 h-12 rounded-full bg-[#161d28] border border-[#212a38] flex items-center justify-center shadow-lg relative overflow-hidden group-hover:border-[#20e3a2] transition-colors shrink-0">
+                <div 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onViewProfileDetail?.('user', currentUser);
+                  }}
+                  className="w-12 h-12 rounded-full bg-[#161d28] border border-[#212a38] flex items-center justify-center shadow-lg relative overflow-hidden hover:border-[#20e3a2] hover:scale-105 active:scale-95 transition-all shrink-0 cursor-pointer"
+                  title="View Profile Details"
+                >
                   <div 
                     className="absolute inset-0 flex items-center justify-center text-white text-xs font-black"
                     style={{
@@ -343,7 +375,14 @@ export default function ChatListScreen({
                 onClick={() => onSelectChat('general')}
                 className="w-full flex items-center gap-3.5 p-3.5 rounded-2xl bg-[#161d28]/60 hover:bg-[#161d28] border border-[#212a38]/40 transition-colors cursor-pointer text-left group"
               >
-                <div className="w-12 h-12 rounded-full bg-[#161d28] border border-[#212a38] flex items-center justify-center shadow-lg relative overflow-hidden group-hover:border-[#20e3a2] transition-colors shrink-0">
+                <div 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onViewProfileDetail?.('general');
+                  }}
+                  className="w-12 h-12 rounded-full bg-[#161d28] border border-[#212a38] flex items-center justify-center shadow-lg relative overflow-hidden hover:border-[#20e3a2] hover:scale-105 active:scale-95 transition-all shrink-0 cursor-pointer"
+                  title="View Portal Details"
+                >
                   <div className="absolute inset-0 bg-gradient-to-br from-[#20e3a2]/10 to-[#7c5cff]/10 opacity-60 group-hover:opacity-100 transition-opacity" />
                   <svg width="28" height="28" viewBox="0 0 150 150" fill="none" className="relative z-10">
                     <defs>
@@ -408,7 +447,7 @@ export default function ChatListScreen({
               <MessageSquare className="w-8 h-8 text-[#5a6478] mb-2.5 opacity-60" />
               <p className="text-xs text-[#8d97ab] font-medium leading-relaxed">
                 No conversation portals open yet.<br />
-                Tap the floating search button below to establish a secure link.
+                Tap the floating search button below to start a chat.
               </p>
             </div>
           ) : (
@@ -418,13 +457,21 @@ export default function ChatListScreen({
                 
                 if (session.isGroup) {
                   // Render Group item
+                  const groupData = (groups || []).find(g => g.id === session.chatId);
                   return (
                     <button
                       key={session.chatId}
                       onClick={() => onSelectChat(session.chatId)}
                       className="w-full flex items-center gap-3.5 p-3.5 rounded-2xl bg-[#161d28]/20 hover:bg-[#161d28]/70 border border-[#212a38]/20 hover:border-[#212a38]/70 transition-all cursor-pointer text-left group"
                     >
-                      <div className="w-12 h-12 rounded-full bg-[#161d28] border border-[#212a38] flex items-center justify-center shadow-lg relative overflow-hidden group-hover:border-[#20e3a2] transition-colors shrink-0">
+                      <div 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onViewProfileDetail?.('group', groupData || session);
+                        }}
+                        className="w-12 h-12 rounded-full bg-[#161d28] border border-[#212a38] flex items-center justify-center shadow-lg relative overflow-hidden hover:border-[#20e3a2] hover:scale-105 active:scale-95 transition-all shrink-0 cursor-pointer"
+                        title="View Group Details"
+                      >
                         <div className="absolute inset-0 bg-gradient-to-br from-[#7c5cff]/20 to-[#20e3a2]/20 opacity-75" />
                         {session.icon && (session.icon.startsWith('data:image/') || session.icon.startsWith('http')) ? (
                           <img 
@@ -441,7 +488,7 @@ export default function ChatListScreen({
                         <div className="flex items-center justify-between">
                           <span className="font-display font-bold text-[14.5px] text-white group-hover:text-[#20e3a2] transition-colors truncate">
                             {session.name}
-                            <span className="text-[9px] text-[#20e3a2] font-mono font-bold ml-2 px-1 rounded bg-[#20e3a2]/10 border border-[#20e3a2]/15">GROUP</span>
+                            <span className="text-[9px] text-[#20e3a2] font-mono font-bold ml-2 px-1 rounded bg-[#20e3a2]/10 border border-[#20e3a2]/15 font-sans">GROUP</span>
                           </span>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             {unreadCount > 0 && (
@@ -450,7 +497,7 @@ export default function ChatListScreen({
                               </span>
                             )}
                             {session.lastMsg && (
-                              <span className="text-[11px] text-[#5a6478] font-mono font-semibold">
+                              <span className={`text-[11px] font-mono font-semibold ${session.lastMsg.isDraft ? 'text-[#ff9233] animate-pulse' : 'text-[#5a6478]'}`}>
                                 {session.lastMsg.time}
                               </span>
                             )}
@@ -460,15 +507,19 @@ export default function ChatListScreen({
                         <p className="text-[12.5px] text-[#8d97ab] font-medium truncate mt-0.5">
                           {session.lastMsg ? (
                             <span>
-                              <span className="text-[#eef1f6] font-semibold">
-                                {session.lastMsg.senderId === currentUser.id
-                                  ? 'You'
-                                  : (allProfiles.find((p) => p.id === session.lastMsg!.senderId)?.display_name || 'User')}:{' '}
-                              </span>
+                              {session.lastMsg.isDraft ? (
+                                <span className="text-[#ff9233] font-bold mr-1.5">[Draft]</span>
+                              ) : (
+                                <span className="text-[#eef1f6] font-semibold">
+                                  {session.lastMsg.senderId === currentUser.id
+                                    ? 'You'
+                                    : getContactDisplayName(allProfiles.find((p) => p.id === session.lastMsg!.senderId))}:{' '}
+                                </span>
+                              )}
                               {session.lastMsg.text}
                             </span>
                           ) : (
-                            <span className="italic text-[#5a6478]">No communications yet</span>
+                            <span className="italic text-[#5a6478]">No messages yet</span>
                           )}
                         </p>
                       </div>
@@ -484,7 +535,14 @@ export default function ChatListScreen({
                       onClick={() => onSelectChat(session.chatId, peer)}
                       className="w-full flex items-center gap-3.5 p-3.5 rounded-2xl bg-[#161d28]/30 hover:bg-[#161d28]/80 border border-[#212a38]/20 hover:border-[#212a38] transition-all cursor-pointer text-left group"
                     >
-                      <div className="relative w-12 h-12 flex-shrink-0">
+                      <div 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onViewProfileDetail?.('user', peer);
+                        }}
+                        className="relative w-12 h-12 flex-shrink-0 cursor-pointer hover:scale-105 active:scale-95 transition-transform"
+                        title="View Profile Details"
+                      >
                         <div
                           className="w-full h-full rounded-full flex items-center justify-center text-white text-lg font-bold shadow-md select-none"
                           style={{
@@ -515,7 +573,7 @@ export default function ChatListScreen({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="font-display font-bold text-[14.5px] text-white group-hover:text-[#7c5cff] transition-colors truncate">
-                            {peer.display_name || peer.username}
+                            {getContactDisplayName(peer)}
                           </span>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             {unreadCount > 0 && (
@@ -524,7 +582,7 @@ export default function ChatListScreen({
                               </span>
                             )}
                             {session.lastMsg && (
-                              <span className="text-[11px] text-[#5a6478] font-mono font-semibold">
+                              <span className={`text-[11px] font-mono font-semibold ${session.lastMsg.isDraft ? 'text-[#ff9233] animate-pulse' : 'text-[#5a6478]'}`}>
                                 {session.lastMsg.time}
                               </span>
                             )}
@@ -533,7 +591,9 @@ export default function ChatListScreen({
                         <p className="text-[12.5px] text-[#8d97ab] font-medium truncate mt-0.5 flex items-center gap-1">
                           {session.lastMsg ? (
                             <>
-                              {session.lastMsg.senderId === currentUser.id ? (
+                              {session.lastMsg.isDraft ? (
+                                <span className="text-[#ff9233] font-bold mr-1">[Draft]</span>
+                              ) : session.lastMsg.senderId === currentUser.id ? (
                                 <span className="flex items-center gap-1 flex-shrink-0">
                                   <span className="text-[#5a6478]">You:</span>
                                 </span>
@@ -541,7 +601,7 @@ export default function ChatListScreen({
                               <span className="truncate">{session.lastMsg.text}</span>
                             </>
                           ) : (
-                            <span className="italic text-[#5a6478]">Secure portal open</span>
+                            <span className="italic text-[#5a6478]">Chat open</span>
                           )}
                         </p>
                       </div>

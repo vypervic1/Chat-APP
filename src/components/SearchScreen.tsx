@@ -201,7 +201,7 @@ export default function SearchScreen({
             <ArrowLeft className="w-4.5 h-4.5 text-[#eef1f6]" />
           </button>
           <div className="min-w-0 flex-1">
-            <h2 className="font-display font-bold text-sm text-white leading-tight">Establish Secure Group</h2>
+            <h2 className="font-display font-bold text-sm text-white leading-tight">Create Group</h2>
             <p className="text-[10px] text-[#5a6478] font-mono leading-none mt-0.5">Define metadata & add members</p>
           </div>
         </div>
@@ -276,7 +276,7 @@ export default function SearchScreen({
               <label className="text-[10px] font-bold text-[#5a6478] uppercase tracking-wider">Group Channel Name</label>
               <input
                 type="text"
-                placeholder="Enter secure group name..."
+                placeholder="Enter group name..."
                 value={groupName}
                 onChange={(e) => setGroupName(e.target.value)}
                 className="w-full bg-[#161d28] border border-[#212a38] rounded-xl px-3.5 py-2.5 text-xs text-white font-semibold placeholder-[#5a6478] outline-none focus:border-[#20e3a2] transition-colors"
@@ -288,7 +288,7 @@ export default function SearchScreen({
             {/* Warning banner */}
             <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-[#20e3a2]/5 border border-[#20e3a2]/15 text-[10.5px] text-[#8d97ab] leading-normal">
               <Shield className="w-4 h-4 text-[#20e3a2] shrink-0 mt-0.5" />
-              <span>All communications in this group will be multiplexed across all designated members securely.</span>
+              <span>All communications in this group will be visible to all members.</span>
             </div>
           </div>
 
@@ -430,7 +430,7 @@ export default function SearchScreen({
             <div className="min-w-0 flex-1">
               <h4 className="text-xs font-bold text-white flex items-center gap-1.5 leading-tight">
                 <Users className="w-4 h-4 text-[#20e3a2]" />
-                Establish Secure Group Chat?
+                Create Group Chat?
               </h4>
               <p className="text-[10.5px] text-[#8d97ab] mt-1 leading-normal">
                 Coordinate communication channels with multiple users simultaneously.
@@ -477,7 +477,7 @@ export default function SearchScreen({
                 <div className="w-12 h-12 rounded-full bg-[#161d28] border border-[#212a38] flex items-center justify-center mb-3">
                   <X className="w-5 h-5 text-[#ff5470]" />
                 </div>
-                <p className="text-xs font-bold text-white mb-1">No secure portals found</p>
+                <p className="text-xs font-bold text-white mb-1">No users found</p>
                 <p className="text-[11px] text-[#8d97ab] max-w-xs">
                   We couldn't locate any users matching "{searchQuery}". Check the spelling or connection status.
                 </p>
