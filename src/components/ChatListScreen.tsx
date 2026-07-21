@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Profile, Message, Group } from '../types';
 import { Search, Settings, MessageSquare, Shield, Circle, User, Bell, Users, WifiOff } from 'lucide-react';
-import { getContactDisplayName } from '../utils/customNames';
+import { getContactDisplayName, isUserOnline } from '../utils/customNames';
 
 interface ChatListScreenProps {
   currentUser: Profile;
@@ -95,7 +95,9 @@ export default function ChatListScreen({
     const draftText = localStorage.getItem(draftKey);
     const hasDraft = draftText && draftText.trim() !== '';
 
-    const chatMsgs = messagesList.filter((m) => m.chat_id === chatId);
+    const chatMsgs = messagesList
+      .filter((m) => m.chat_id === chatId)
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     if (chatMsgs.length === 0 && !hasDraft) return null;
 
     if (hasDraft) {
@@ -168,7 +170,7 @@ export default function ChatListScreen({
       const unreadCount = getUnreadCount(chatId);
       
       // If there's a chat history or the peer is online, show in session list
-      if (lastMsg || peer.is_online) {
+      if (lastMsg || isUserOnline(peer)) {
         sessions.push({
           chatId,
           isGroup: false,
@@ -564,7 +566,7 @@ export default function ChatListScreen({
                         <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2.5 border-[#080b10] flex items-center justify-center">
                           <Circle
                             className={`w-full h-full rounded-full fill-current ${
-                              peer.is_online ? 'text-[#20e3a2]' : 'text-[#5a6478]'
+                              isUserOnline(peer) ? 'text-[#20e3a2]' : 'text-[#5a6478]'
                             }`}
                           />
                         </span>

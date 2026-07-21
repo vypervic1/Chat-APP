@@ -23,7 +23,8 @@ import {
   Link as LinkIcon,
   Globe,
   Copy,
-  ExternalLink
+  ExternalLink,
+  Camera
 } from 'lucide-react';
 import { getAllSavedFiles, deleteSavedFile, SavedFile } from '../utils/indexedDB';
 import { 
@@ -35,6 +36,7 @@ import {
   deletePushToken,
   PushToken 
 } from '../notifications';
+import { parseProfileAbout, buildProfileAbout } from '../utils/customNames';
 
 interface SettingsScreenProps {
   currentUser: Profile;
@@ -58,7 +60,9 @@ export default function SettingsScreen({
   onToast,
 }: SettingsScreenProps) {
   const [displayName, setDisplayName] = useState(currentUser.display_name || '');
-  const [about, setAbout] = useState(currentUser.about || 'Hey there! I am using VyperVic.');
+  const parsedAbout = parseProfileAbout(currentUser.about);
+  const [thinking, setThinking] = useState(parsedAbout.thinking || '');
+  const [about, setAbout] = useState(parsedAbout.about || 'Hey there! I am using VyperVic.');
   const [loading, setLoading] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState<'logout' | 'delete' | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -70,6 +74,8 @@ export default function SettingsScreen({
   const [registeringDevice, setRegisteringDevice] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [coverUrl, setCoverUrl] = useState(parsedAbout.coverUrl || '');
+  const coverInputRef = useRef<HTMLInputElement | null>(null);
 
   // Local files cache state
   const [localFiles, setLocalFiles] = useState<SavedFile[]>([]);
@@ -281,6 +287,49 @@ export default function SettingsScreen({
     }
   };
 
+  const handleUpdateAboutAndThinking = async (newThinking: string, newAbout: string) => {
+    try {
+      const combined = buildProfileAbout(newThinking.trim(), coverUrl, newAbout.trim());
+      const updatedData = { ...currentUser, about: combined };
+      const { error } = await supabase
+        .from('profiles')
+        .update({ about: combined })
+        .eq('id', currentUser.id);
+
+      if (error) throw error;
+      onUpdateProfile(updatedData);
+    } catch (err: any) {
+      console.error('Error updating profile status:', err);
+      onToast('Failed to update status.');
+    }
+  };
+
+  const handleCoverUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = reader.result as string;
+      try {
+        const combined = buildProfileAbout(thinking, base64, about);
+        const { error } = await supabase
+          .from('profiles')
+          .update({ about: combined })
+          .eq('id', currentUser.id);
+
+        if (error) throw error;
+        setCoverUrl(base64);
+        onUpdateProfile({ ...currentUser, about: combined });
+        onToast('Cover photo updated successfully!');
+      } catch (err: any) {
+        console.error('Error saving cover photo:', err);
+        onToast('Failed to save cover photo.');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -352,11 +401,43 @@ export default function SettingsScreen({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-[22px] py-6 pb-10">
-        <div className="flex flex-col items-center mb-[30px]">
+        <div className="flex flex-col items-center mb-[30px] w-full relative">
+          {/* Cover Photo Container */}
+          <div className="w-full h-32 rounded-2xl relative overflow-hidden bg-gradient-to-r from-[#7c5cff]/20 to-[#20e3a2]/20 border border-[#212a38]/60 group mb-[-46px] z-0">
+            {coverUrl ? (
+              <img
+                src={coverUrl}
+                alt="Cover"
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+            ) : null}
+            
+            {/* Dark overlay on hover */}
+            <div 
+              className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
+              onClick={() => coverInputRef.current?.click()}
+            >
+              <div className="flex items-center gap-1.5 text-xs text-white bg-black/60 px-3 py-1.5 rounded-full border border-white/10 shadow-lg">
+                <Camera className="w-4 h-4 text-[#20e3a2]" />
+                <span className="font-semibold text-[11px]">Change Cover</span>
+              </div>
+            </div>
+
+            {/* Persistent edit indicator for easy access */}
+            <button
+              onClick={() => coverInputRef.current?.click()}
+              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 border border-white/10 flex items-center justify-center text-white cursor-pointer active:scale-95 transition-transform"
+              title="Change Cover Photo"
+            >
+              <Camera className="w-4 h-4 text-white" />
+            </button>
+          </div>
+
           {/* Big Avatar */}
           <div
             onClick={() => fileInputRef.current?.click()}
-            className="w-[104px] h-[104px] rounded-full flex items-center justify-center text-[38px] font-extrabold text-[#06120d] cursor-pointer relative shadow-[0_18px_40px_-12px_rgba(124,92,255,0.5)] select-none group"
+            className="w-[96px] h-[96px] rounded-full flex items-center justify-center text-[34px] font-extrabold text-[#06120d] cursor-pointer relative shadow-[0_12px_32px_-8px_rgba(124,92,255,0.4)] select-none group z-10 border-4 border-[#080b10]"
             style={{
               background: currentUser.avatar_url ? 'none' : getAvatarStyle(seed),
             }}
@@ -372,8 +453,8 @@ export default function SettingsScreen({
               getInitials(currentUser.display_name || currentUser.username || 'V')
             )}
 
-            <div className="absolute bottom-[2px] right-[2px] w-8 h-8 rounded-full bg-[#1d2531] border-3 border-[#080b10] flex items-center justify-center text-white">
-              <Edit className="w-3.5 h-3.5 text-[#eef1f6]" />
+            <div className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-[#1d2531] border-2 border-[#080b10] flex items-center justify-center text-white shadow-md">
+              <Edit className="w-3 h-3 text-[#eef1f6]" />
             </div>
           </div>
 
@@ -390,6 +471,15 @@ export default function SettingsScreen({
           type="file"
           ref={fileInputRef}
           onChange={handleImageUpload}
+          className="hidden"
+          accept="image/*"
+        />
+
+        {/* Hidden File input for cover photo */}
+        <input
+          type="file"
+          ref={coverInputRef}
+          onChange={handleCoverUpload}
           className="hidden"
           accept="image/*"
         />
@@ -413,6 +503,27 @@ export default function SettingsScreen({
           </div>
 
           <div className="field-group">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-[11px] font-bold tracking-[1.4px] text-[#5a6478] uppercase block">
+                What's on your mind
+              </label>
+              <span className="text-[10px] text-[#5a6478] font-mono">{thinking.length}/40</span>
+            </div>
+            <div className="flex items-center justify-between gap-2.5 bg-[#161d28] border border-[#212a38] rounded-2xl px-4 py-3 focus-within:border-[#20e3a2] transition-colors">
+              <input
+                type="text"
+                maxLength={40}
+                placeholder="What's on your mind... 💭"
+                className="w-full bg-transparent border-none outline-none text-sm text-[#eef1f6] font-semibold"
+                value={thinking}
+                onChange={(e) => setThinking(e.target.value.substring(0, 40))}
+                onBlur={() => handleUpdateAboutAndThinking(thinking, about)}
+              />
+              <Edit className="w-4 h-4 text-[#5a6478]" />
+            </div>
+          </div>
+
+          <div className="field-group">
             <label className="text-[11px] font-bold tracking-[1.4px] text-[#5a6478] uppercase mb-2 block">
               About Status
             </label>
@@ -422,15 +533,15 @@ export default function SettingsScreen({
                 className="w-full bg-transparent border-none outline-none text-sm text-[#eef1f6] font-semibold"
                 value={about}
                 onChange={(e) => setAbout(e.target.value)}
-                onBlur={() => handleUpdateProfile('about', about)}
+                onBlur={() => handleUpdateAboutAndThinking(thinking, about)}
               />
               <Edit className="w-4 h-4 text-[#5a6478]" />
             </div>
           </div>
         </div>
 
-        {/* App Theme Selection Card (Requirement 9) */}
-        <div className="mt-6 bg-[#161d28]/60 border border-[#212a38] rounded-3xl p-5 space-y-4">
+        {/* App Theme Selection Card */}
+        <div className="mt-6 bg-[#161d28]/60 border border-[#212a38] rounded-3xl p-5 space-y-5">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-[#7c5cff]/15 text-[#7c5cff]">
               <Sparkles className="w-5 h-5" />
@@ -441,74 +552,103 @@ export default function SettingsScreen({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5 pt-1">
-            {/* Cosmic Charcoal Theme */}
-            <button
-              onClick={() => onUpdateAppTheme('cosmic')}
-              className={`flex flex-col items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer select-none ${
-                appTheme === 'cosmic'
-                  ? 'border-[#20e3a2] bg-[#1d2531]'
-                  : 'border-[#212a38] bg-[#10151d] hover:bg-[#161d28]'
-              }`}
-            >
-              <div className="flex gap-1.5 mb-2">
-                <span className="w-3.5 h-3.5 rounded-full bg-[#080b10] border border-white/10" />
-                <span className="w-3.5 h-3.5 rounded-full bg-[#20e3a2]" />
-                <span className="w-3.5 h-3.5 rounded-full bg-[#7c5cff]" />
-              </div>
-              <span className="text-[10px] font-bold text-white uppercase tracking-wider">Cosmic</span>
-            </button>
+          <div className="space-y-4">
+            {/* Dark Themes Category */}
+            <div>
+              <div className="text-[10px] font-bold tracking-[1.2px] text-[#5a6478] uppercase mb-2">Dark Themes</div>
+              <div className="grid grid-cols-2 gap-2.5">
+                {/* Liquid Glass */}
+                <button
+                  onClick={() => onUpdateAppTheme('liquid-glass')}
+                  className={`flex flex-col items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer select-none ${
+                    appTheme === 'liquid-glass'
+                      ? 'border-[#38bdf8] bg-[#10151d]/75 shadow-lg shadow-[#38bdf8]/10'
+                      : 'border-[#212a38] bg-[#10151d] hover:bg-[#161d28]'
+                  }`}
+                >
+                  <div className="flex gap-1.5 mb-2">
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#030509] border border-white/10" />
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#38bdf8]" />
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#818cf8]" />
+                  </div>
+                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">Liquid Glass</span>
+                </button>
 
-            {/* Vyper Emerald Theme */}
-            <button
-              onClick={() => onUpdateAppTheme('emerald')}
-              className={`flex flex-col items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer select-none ${
-                appTheme === 'emerald'
-                  ? 'border-[#00ff88] bg-[#151c19]'
-                  : 'border-[#212a38] bg-[#10151d] hover:bg-[#161d28]'
-              }`}
-            >
-              <div className="flex gap-1.5 mb-2">
-                <span className="w-3.5 h-3.5 rounded-full bg-[#040706] border border-white/10" />
-                <span className="w-3.5 h-3.5 rounded-full bg-[#00ff88]" />
-                <span className="w-3.5 h-3.5 rounded-full bg-[#20e3a2]" />
-              </div>
-              <span className="text-[10px] font-bold text-white uppercase tracking-wider">Emerald</span>
-            </button>
+                {/* Cosmic */}
+                <button
+                  onClick={() => onUpdateAppTheme('cosmic')}
+                  className={`flex flex-col items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer select-none ${
+                    appTheme === 'cosmic'
+                      ? 'border-[#20e3a2] bg-[#1d2531]'
+                      : 'border-[#212a38] bg-[#10151d] hover:bg-[#161d28]'
+                  }`}
+                >
+                  <div className="flex gap-1.5 mb-2">
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#080b10] border border-white/10" />
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#20e3a2]" />
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#7c5cff]" />
+                  </div>
+                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">Cosmic</span>
+                </button>
 
-            {/* Solar Eclipse Theme */}
-            <button
-              onClick={() => onUpdateAppTheme('solar')}
-              className={`flex flex-col items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer select-none ${
-                appTheme === 'solar'
-                  ? 'border-[#00e5ff] bg-[#231f3d]'
-                  : 'border-[#212a38] bg-[#10151d] hover:bg-[#161d28]'
-              }`}
-            >
-              <div className="flex gap-1.5 mb-2">
-                <span className="w-3.5 h-3.5 rounded-full bg-[#0b0914] border border-white/10" />
-                <span className="w-3.5 h-3.5 rounded-full bg-[#00e5ff]" />
-                <span className="w-3.5 h-3.5 rounded-full bg-[#7c5cff]" />
-              </div>
-              <span className="text-[10px] font-bold text-white uppercase tracking-wider">Solar</span>
-            </button>
+                {/* Solar */}
+                <button
+                  onClick={() => onUpdateAppTheme('solar')}
+                  className={`flex flex-col items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer select-none ${
+                    appTheme === 'solar'
+                      ? 'border-[#00e5ff] bg-[#231f3d]'
+                      : 'border-[#212a38] bg-[#10151d] hover:bg-[#161d28]'
+                  }`}
+                >
+                  <div className="flex gap-1.5 mb-2">
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#0b0914] border border-white/10" />
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#00e5ff]" />
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#7c5cff]" />
+                  </div>
+                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">Solar</span>
+                </button>
 
-            {/* Pristine Light Theme */}
-            <button
-              onClick={() => onUpdateAppTheme('light')}
-              className={`flex flex-col items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer select-none ${
-                appTheme === 'light'
-                  ? 'border-[#6236ff] bg-[#ffffff]'
-                  : 'border-[#212a38] bg-[#10151d] hover:bg-[#161d28]'
-              }`}
-            >
-              <div className="flex gap-1.5 mb-2">
-                <span className="w-3.5 h-3.5 rounded-full bg-[#f4f6f9] border border-black/10" />
-                <span className="w-3.5 h-3.5 rounded-full bg-[#10b981]" />
-                <span className="w-3.5 h-3.5 rounded-full bg-[#6366f1]" />
+                {/* Emerald */}
+                <button
+                  onClick={() => onUpdateAppTheme('emerald')}
+                  className={`flex flex-col items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer select-none ${
+                    appTheme === 'emerald'
+                      ? 'border-[#00ff88] bg-[#151c19]'
+                      : 'border-[#212a38] bg-[#10151d] hover:bg-[#161d28]'
+                  }`}
+                >
+                  <div className="flex gap-1.5 mb-2">
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#040706] border border-white/10" />
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#00ff88]" />
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#20e3a2]" />
+                  </div>
+                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">Emerald</span>
+                </button>
               </div>
-              <span className="text-[10px] font-bold text-white uppercase tracking-wider">Light</span>
-            </button>
+            </div>
+
+            {/* Light Themes Category */}
+            <div>
+              <div className="text-[10px] font-bold tracking-[1.2px] text-[#5a6478] uppercase mb-2">Light Themes</div>
+              <div className="grid grid-cols-2 gap-2.5">
+                {/* Pristine Light */}
+                <button
+                  onClick={() => onUpdateAppTheme('light')}
+                  className={`flex flex-col items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer select-none ${
+                    appTheme === 'light'
+                      ? 'border-[#6236ff] bg-[#ffffff]'
+                      : 'border-[#212a38] bg-[#10151d] hover:bg-[#161d28]'
+                  }`}
+                >
+                  <div className="flex gap-1.5 mb-2">
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#f4f6f9] border border-black/10" />
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#10b981]" />
+                    <span className="w-3.5 h-3.5 rounded-full bg-[#6366f1]" />
+                  </div>
+                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">Light</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 

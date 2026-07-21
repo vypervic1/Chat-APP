@@ -135,10 +135,10 @@ export default function CallOverlay({
   const [isEditingReactions, setIsEditingReactions] = useState(false);
   const [listedReactions, setListedReactions] = useState<string[]>(() => {
     try {
-      const saved = localStorage.getItem('vyper_call_custom_reactions_v1');
-      return saved ? JSON.parse(saved) : ['❤️', '👍', '🔥', '🎉', '😮'];
+      const saved = localStorage.getItem('vyper_unified_reaction_emojis_v2');
+      return saved ? JSON.parse(saved) : ['❤️', '👍', '🔥', '🎉', '😮', '😂', '👏', '🙏', '😢', '💯'];
     } catch (e) {
-      return ['❤️', '👍', '🔥', '🎉', '😮'];
+      return ['❤️', '👍', '🔥', '🎉', '😮', '😂', '👏', '🙏', '😢', '💯'];
     }
   });
 
@@ -1534,9 +1534,9 @@ export default function CallOverlay({
                             const emojiClean = newEmoji.trim();
                             if (emojiClean) {
                               setListedReactions((prev) => {
-                                if (prev.includes(emojiClean)) return prev;
-                                const next = [...prev, emojiClean];
-                                localStorage.setItem('vyper_call_custom_reactions_v1', JSON.stringify(next));
+                                // Slice the first 9, append the new one
+                                const next = [...prev.slice(0, 9), emojiClean];
+                                localStorage.setItem('vyper_unified_reaction_emojis_v2', JSON.stringify(next));
                                 return next;
                               });
                             }

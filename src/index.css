@@ -165,3 +165,48 @@ body {
 :root[data-theme="light"] .text-gray-300 {
   color: var(--text-2) !important;
 }
+
+/* Special styling for the Liquid Glass Theme */
+:root[data-theme="liquid-glass"] {
+  --bg: #030509;
+  --surface: rgba(13, 19, 32, 0.45);
+  --surface-2: rgba(22, 30, 49, 0.55);
+  --surface-3: rgba(30, 41, 67, 0.65);
+  --hairline: rgba(255, 255, 255, 0.08);
+  --accent-a: #38bdf8;
+  --accent-b: #818cf8;
+  --text-1: #f8fafc;
+  --text-2: #94a3b8;
+  --text-3: #64748b;
+  --bubble-recv: rgba(30, 41, 59, 0.4);
+}
+
+:root[data-theme="liquid-glass"] body {
+  background: 
+    radial-gradient(circle at 10% 20%, rgba(56, 189, 248, 0.15), transparent 50%),
+    radial-gradient(circle at 85% 80%, rgba(129, 140, 248, 0.18), transparent 50%),
+    #030509 !important;
+  color: var(--text-1) !important;
+}
+
+:root[data-theme="liquid-glass"] .bg-\[\#10151d\],
+:root[data-theme="liquid-glass"] .bg-\[\#161d28\],
+:root[data-theme="liquid-glass"] .bg-\[\#1d2531\],
+:root[data-theme="liquid-glass"] .bg-\[\#121924\]\/95 {
+  background-color: rgba(13, 19, 32, 0.45) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+:root[data-theme="liquid-glass"] .bg-\[\#161d28\]\/60 {
+  background-color: rgba(22, 30, 49, 0.35) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+}
+
+:root[data-theme="liquid-glass"] .border-\[\#212a38\]\/20,
+:root[data-theme="liquid-glass"] .border-\[\#212a38\]\/65,
+:root[data-theme="liquid-glass"] .border-\[\#212a38\]\/80 {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}

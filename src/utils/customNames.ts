@@ -16,22 +16,49 @@ export function getContactDisplayName(profile: Profile | null | undefined): stri
   return profile.display_name || profile.username || 'Unknown User';
 }
 
-export function parseProfileAbout(aboutStr: string | null) {
-  if (!aboutStr) return { thinking: null, about: '' };
-  const match = aboutStr.match(/^\[thinking:(.*?)\](.*)$/);
-  if (match) {
-    return {
-      thinking: match[1],
-      about: match[2] || 'Hey there!'
-    };
-  }
-  return { thinking: null, about: aboutStr };
+export function isUserOnline(profile: Profile | null | undefined): boolean {
+  if (!profile) return false;
+  if (!profile.is_online) return false;
+  if (!profile.last_seen) return false;
+  // If last_seen is within the last 120 seconds, they are active
+  const diffMs = Date.now() - new Date(profile.last_seen).getTime();
+  return diffMs < 120 * 1000;
 }
 
-export function buildProfileAbout(thinking: string | null, about: string) {
-  const cleanThinking = thinking ? thinking.substring(0, 40) : '';
-  if (cleanThinking) {
-    return `[thinking:${cleanThinking}]${about}`;
+export function parseProfileAbout(aboutStr: string | null) {
+  let thinking: string | null = null;
+  let coverUrl: string | null = null;
+  let about = aboutStr || '';
+
+  // Parse thinking if present at the start
+  const thinkingMatch = about.match(/^\[thinking:(.*?)\]/);
+  if (thinkingMatch) {
+    thinking = thinkingMatch[1];
+    about = about.substring(thinkingMatch[0].length);
   }
-  return about;
+
+  // Parse coverUrl if present
+  const coverMatch = about.match(/^\[cover:(.*?)\]/);
+  if (coverMatch) {
+    coverUrl = coverMatch[1];
+    about = about.substring(coverMatch[0].length);
+  }
+
+  if (!about && !thinking && !coverUrl) {
+    about = '';
+  }
+
+  return { thinking, coverUrl, about };
+}
+
+export function buildProfileAbout(thinking: string | null, coverUrl: string | null, about: string) {
+  let result = '';
+  if (thinking && thinking.trim()) {
+    result += `[thinking:${thinking.trim().substring(0, 40)}]`;
+  }
+  if (coverUrl && coverUrl.trim()) {
+    result += `[cover:${coverUrl.trim()}]`;
+  }
+  result += about;
+  return result;
 }

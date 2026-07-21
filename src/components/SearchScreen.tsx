@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 import { Profile, Group } from '../types';
 import { ArrowLeft, Search, Circle, X, Loader2, Compass, Users, Plus, Check, CheckSquare, Square, Shield, Image } from 'lucide-react';
+import { isUserOnline } from '../utils/customNames';
 
 interface SearchScreenProps {
   currentUser: Profile;
@@ -517,7 +518,7 @@ export default function SearchScreen({
                     <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[#080b10] flex items-center justify-center">
                       <Circle
                         className={`w-full h-full rounded-full fill-current ${
-                          user.is_online ? 'text-[#20e3a2]' : 'text-[#5a6478]'
+                          isUserOnline(user) ? 'text-[#20e3a2]' : 'text-[#5a6478]'
                         }`}
                       />
                     </span>

@@ -95,6 +95,14 @@ export default function App() {
       root.style.setProperty('--hairline', '#302a54');
       root.style.setProperty('--accent-a', '#00e5ff');
       root.style.setProperty('--accent-b', '#7c5cff');
+    } else if (theme === 'liquid-glass') {
+      root.style.setProperty('--bg', '#030509');
+      root.style.setProperty('--surface', 'rgba(13, 19, 32, 0.45)');
+      root.style.setProperty('--surface-2', 'rgba(22, 30, 49, 0.55)');
+      root.style.setProperty('--surface-3', 'rgba(30, 41, 67, 0.65)');
+      root.style.setProperty('--hairline', 'rgba(255, 255, 255, 0.08)');
+      root.style.setProperty('--accent-a', '#38bdf8');
+      root.style.setProperty('--accent-b', '#818cf8');
     } else {
       root.style.setProperty('--bg', '#080b10');
       root.style.setProperty('--surface', '#10151d');
@@ -1259,20 +1267,47 @@ export default function App() {
         if (!payload) return;
         const { messageId, userId, emoji } = payload;
         setReactions((prev) => {
-          const msgReactions = { ...(prev[messageId] || {}) };
-          const users = [...(msgReactions[emoji] || [])];
+          const msgReactions = { ...(prev[messageId] || {}) } as Record<string, string[]>;
           
-          const idx = users.indexOf(userId);
-          if (idx >= 0) {
-            users.splice(idx, 1);
-          } else {
-            users.push(userId);
+          let existingEmoji: string | null = null;
+          for (const [key, users] of Object.entries(msgReactions)) {
+            if (users.includes(userId)) {
+              existingEmoji = key;
+              break;
+            }
           }
-          
+
           const updatedMsgReactions = { ...msgReactions };
-          if (users.length === 0) {
-            delete updatedMsgReactions[emoji];
+
+          if (existingEmoji === emoji) {
+            const users = [...(updatedMsgReactions[emoji] || [])];
+            const idx = users.indexOf(userId);
+            if (idx >= 0) {
+              users.splice(idx, 1);
+            }
+            if (users.length === 0) {
+              delete updatedMsgReactions[emoji];
+            } else {
+              updatedMsgReactions[emoji] = users;
+            }
           } else {
+            if (existingEmoji) {
+              const users = [...(updatedMsgReactions[existingEmoji] || [])];
+              const idx = users.indexOf(userId);
+              if (idx >= 0) {
+                users.splice(idx, 1);
+              }
+              if (users.length === 0) {
+                delete updatedMsgReactions[existingEmoji];
+              } else {
+                updatedMsgReactions[existingEmoji] = users;
+              }
+            }
+
+            const users = [...(updatedMsgReactions[emoji] || [])];
+            if (!users.includes(userId)) {
+              users.push(userId);
+            }
             updatedMsgReactions[emoji] = users;
           }
           return { ...prev, [messageId]: updatedMsgReactions };
@@ -1458,6 +1493,17 @@ export default function App() {
         if (error) console.warn('Failed to set online status true on mount:', error);
       });
 
+    // Heartbeat every 30 seconds to keep presence alive and accurate
+    const heartbeatInterval = setInterval(() => {
+      supabase
+        .from('profiles')
+        .update({ is_online: true, last_seen: new Date().toISOString() })
+        .eq('id', currentUser.id)
+        .then(({ error }) => {
+          if (error) console.warn('Failed presence heartbeat update:', error);
+        });
+    }, 30000);
+
     const handleBeforeUnload = async () => {
       try {
         if (activeCallRef.current) {
@@ -1478,6 +1524,7 @@ export default function App() {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      clearInterval(heartbeatInterval);
       // DO NOT call handleBeforeUnload() here! Doing so will mark the user offline on every state change.
     };
   }, [currentUser?.id]);
@@ -1684,20 +1731,47 @@ export default function App() {
   const handleToggleReaction = (messageId: string, emoji: string) => {
     if (!currentUser) return;
     setReactions((prev) => {
-      const msgReactions = { ...(prev[messageId] || {}) };
-      const users = [...(msgReactions[emoji] || [])];
+      const msgReactions = { ...(prev[messageId] || {}) } as Record<string, string[]>;
       
-      const idx = users.indexOf(currentUser.id);
-      if (idx >= 0) {
-        users.splice(idx, 1);
-      } else {
-        users.push(currentUser.id);
+      let existingEmoji: string | null = null;
+      for (const [key, users] of Object.entries(msgReactions)) {
+        if (users.includes(currentUser.id)) {
+          existingEmoji = key;
+          break;
+        }
       }
-      
+
       const updatedMsgReactions = { ...msgReactions };
-      if (users.length === 0) {
-        delete updatedMsgReactions[emoji];
+
+      if (existingEmoji === emoji) {
+        const users = [...(updatedMsgReactions[emoji] || [])];
+        const idx = users.indexOf(currentUser.id);
+        if (idx >= 0) {
+          users.splice(idx, 1);
+        }
+        if (users.length === 0) {
+          delete updatedMsgReactions[emoji];
+        } else {
+          updatedMsgReactions[emoji] = users;
+        }
       } else {
+        if (existingEmoji) {
+          const users = [...(updatedMsgReactions[existingEmoji] || [])];
+          const idx = users.indexOf(currentUser.id);
+          if (idx >= 0) {
+            users.splice(idx, 1);
+          }
+          if (users.length === 0) {
+            delete updatedMsgReactions[existingEmoji];
+          } else {
+            updatedMsgReactions[existingEmoji] = users;
+          }
+        }
+
+        const users = [...(updatedMsgReactions[emoji] || [])];
+        if (!users.includes(currentUser.id)) {
+          users.push(currentUser.id);
+        }
         updatedMsgReactions[emoji] = users;
       }
       

@@ -5,9 +5,10 @@ import {
   ArrowLeft, Phone, Video, Paperclip, Send, Camera, Mic, Square, Trash, Play, Pause, Smile, X, 
   Check, CheckCheck, CornerUpLeft, Pin, Shield, MoreVertical, Image, Palette, FileText, 
   ExternalLink, Trash2, PlusCircle, CheckCircle, Info, Users, Download, Link, UserPlus, UserMinus,
-  RotateCw, Type, PenTool, Sparkles, Forward, PhoneOff, Upload, Star
+  RotateCw, Type, PenTool, Sparkles, Forward, PhoneOff, Upload, Star, Copy, Edit3
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { isUserOnline, getContactDisplayName, parseProfileAbout } from '../utils/customNames';
 
 function generateUUID() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -105,6 +106,8 @@ export default function ChatScreen({
   const [addMemberQuery, setAddMemberQuery] = useState('');
   const [editGroupName, setEditGroupName] = useState('');
   const [editGroupIcon, setEditGroupIcon] = useState('');
+  const [editGroupDescription, setEditGroupDescription] = useState('');
+  const [editGroupCover, setEditGroupCover] = useState('');
 
   const [text, setText] = useState(() => {
     try {
@@ -263,6 +266,14 @@ export default function ChatScreen({
 
   // Message Context Menu / Long Press State
   const [longPressedMsg, setLongPressedMsg] = useState<Message | null>(null);
+  const [unifiedEmojis, setUnifiedEmojis] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('vyper_unified_reaction_emojis_v2');
+      return saved ? JSON.parse(saved) : ['❤️', '👍', '🔥', '🎉', '😮', '😂', '👏', '🙏', '😢', '💯'];
+    } catch {
+      return ['❤️', '👍', '🔥', '🎉', '😮', '😂', '👏', '🙏', '😢', '💯'];
+    }
+  });
   
   // Starred messages state
   const [starredMsgIds, setStarredMsgIds] = useState<string[]>(() => {
@@ -385,7 +396,7 @@ export default function ChatScreen({
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = setTimeout(() => {
       setLongPressedMsg(msg);
-    }, 500);
+    }, 250);
   };
   const cancelLongPress = () => {
     if (longPressTimerRef.current) {
@@ -1143,14 +1154,52 @@ export default function ChatScreen({
   const isGroup = chatId === 'general' || chatId.startsWith('group:');
   const currentGroup = useMemo(() => groups.find((g) => g.id === chatId), [groups, chatId]);
 
+  const onlineCount = useMemo(() => {
+    if (!currentGroup) return 0;
+    return (currentGroup.members || []).filter((memId) => {
+      const memProfile = allProfiles.find((p) => p.id === memId);
+      return memProfile ? isUserOnline(memProfile) : false;
+    }).length;
+  }, [currentGroup, allProfiles]);
+
+  const isCurrentUserAdmin = useMemo(() => {
+    if (!currentGroup) return false;
+    return currentGroup.creator_id === currentUser.id || (currentGroup.admins || []).includes(currentUser.id);
+  }, [currentGroup, currentUser.id]);
+
+  const sortedGroupMembers = useMemo(() => {
+    if (!currentGroup) return [];
+    return [...(currentGroup.members || [])].sort((a, b) => {
+      const isACreator = currentGroup.creator_id === a;
+      const isBCreator = currentGroup.creator_id === b;
+      if (isACreator) return -1;
+      if (isBCreator) return 1;
+      const isAAdmin = (currentGroup.admins || []).includes(a);
+      const isBAdmin = (currentGroup.admins || []).includes(b);
+      if (isAAdmin && !isBAdmin) return -1;
+      if (!isAAdmin && isBAdmin) return 1;
+      return 0;
+    });
+  }, [currentGroup]);
+
   useEffect(() => {
     if (showGroupProfile && currentGroup) {
       setEditGroupName(currentGroup.name || '');
       setEditGroupIcon(currentGroup.icon || '👥');
+      setEditGroupDescription(currentGroup.description || '');
+      setEditGroupCover(currentGroup.cover_url || '');
     }
   }, [showGroupProfile, currentGroup]);
 
   const isMeSpace = chatId.startsWith('me:');
+  const thinkingText = useMemo(() => {
+    if (currentGroup || chatId === 'general') return null;
+    const targetProfile = isMeSpace ? currentUser : peerProfile;
+    if (!targetProfile) return null;
+    const { thinking } = parseProfileAbout(targetProfile.about);
+    return thinking && thinking.trim() ? thinking.trim() : null;
+  }, [currentGroup, chatId, isMeSpace, currentUser, peerProfile]);
+
   const seed = peerProfile?.username?.charCodeAt(0) || 0;
 
   // Custom chat theme styles based on type and configuration
@@ -1211,77 +1260,91 @@ export default function ChatScreen({
             className="flex items-center gap-2.5 min-w-0 cursor-pointer hover:opacity-90 transition-opacity active:scale-[0.98]"
             title="View Security Credentials"
           >
-            {currentGroup ? (
-              <div className="w-9.5 h-9.5 rounded-full bg-[#161d28] border border-[#212a38]/80 flex items-center justify-center shadow-md relative overflow-hidden flex-shrink-0">
-                <div className="absolute inset-0 bg-gradient-to-br from-[#7c5cff]/15 to-[#20e3a2]/15 opacity-75" />
-                <span className="relative z-10 text-base">{currentGroup.icon || '👥'}</span>
-              </div>
-            ) : chatId === 'general' ? (
-              <div className="w-9.5 h-9.5 rounded-full bg-[#161d28] border border-[#212a38]/80 flex items-center justify-center shadow-md relative overflow-hidden flex-shrink-0">
-                <div className="absolute inset-0 bg-gradient-to-br from-[#20e3a2]/10 to-[#7c5cff]/10 opacity-60" />
-                <svg width="22" height="22" viewBox="0 0 150 150" fill="none" className="relative z-10">
-                  <defs>
-                    <linearGradient id="chatHeaderLogoGrad" x1="0" y1="0" x2="150" y2="150" gradientUnits="userSpaceOnUse">
-                      <stop stopColor="#20e3a2" />
-                      <stop offset="1" stopColor="#7c5cff" />
-                    </linearGradient>
-                  </defs>
-                  <path
-                    d="M30 40 C30 20, 60 15, 75 35 C95 60, 60 65, 55 80 C50 95, 85 100, 90 75 C93 60, 75 55, 70 65 C65 75, 80 85, 100 78 C118 71, 118 45, 100 35 C85 27, 75 45, 85 55"
-                    stroke="url(#chatHeaderLogoGrad)"
-                    strokeWidth="11"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </div>
-            ) : isMeSpace ? (
-              <div
-                className="w-9.5 h-9.5 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-sm flex-shrink-0 relative"
-                style={{
-                  background: currentUser.avatar_url ? 'none' : getAvatarStyle(currentUser.username?.charCodeAt(0) || 0),
-                }}
-              >
-                {currentUser.avatar_url ? (
-                  <img
-                    src={currentUser.avatar_url}
-                    alt="Me"
-                    className="w-full h-full rounded-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  getInitials(currentUser.display_name || currentUser.username || 'Me')
-                )}
-                <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-[#080b10] border border-[#212a38] rounded-full flex items-center justify-center text-[#20e3a2]">
-                  <Shield className="w-2.5 h-2.5" />
+            <div className="relative shrink-0">
+              {currentGroup ? (
+                <div className="w-9.5 h-9.5 rounded-full bg-[#161d28] border border-[#212a38]/80 flex items-center justify-center shadow-md relative overflow-hidden flex-shrink-0">
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#7c5cff]/15 to-[#20e3a2]/15 opacity-75" />
+                  <span className="relative z-10 text-base">{currentGroup.icon || '👥'}</span>
                 </div>
-              </div>
-            ) : (
-              <div
-                className="w-9.5 h-9.5 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-sm flex-shrink-0"
-                style={{
-                  background: peerProfile?.avatar_url ? 'none' : getAvatarStyle(seed),
-                }}
-              >
-                {peerProfile?.avatar_url ? (
-                  <img
-                    src={peerProfile.avatar_url}
-                    alt={peerProfile.display_name || ''}
-                    className="w-full h-full rounded-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  getInitials(peerProfile?.display_name || peerProfile?.username || 'V')
-                )}
-              </div>
-            )}
+              ) : chatId === 'general' ? (
+                <div className="w-9.5 h-9.5 rounded-full bg-[#161d28] border border-[#212a38]/80 flex items-center justify-center shadow-md relative overflow-hidden flex-shrink-0">
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#20e3a2]/10 to-[#7c5cff]/10 opacity-60" />
+                  <svg width="22" height="22" viewBox="0 0 150 150" fill="none" className="relative z-10">
+                    <defs>
+                      <linearGradient id="chatHeaderLogoGrad" x1="0" y1="0" x2="150" y2="150" gradientUnits="userSpaceOnUse">
+                        <stop stopColor="#20e3a2" />
+                        <stop offset="1" stopColor="#7c5cff" />
+                      </linearGradient>
+                    </defs>
+                    <path
+                      d="M30 40 C30 20, 60 15, 75 35 C95 60, 60 65, 55 80 C50 95, 85 100, 90 75 C93 60, 75 55, 70 65 C65 75, 80 85, 100 78 C118 71, 118 45, 100 35 C85 27, 75 45, 85 55"
+                      stroke="url(#chatHeaderLogoGrad)"
+                      strokeWidth="11"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+              ) : isMeSpace ? (
+                <div
+                  className="w-9.5 h-9.5 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-sm flex-shrink-0 relative"
+                  style={{
+                    background: currentUser.avatar_url ? 'none' : getAvatarStyle(currentUser.username?.charCodeAt(0) || 0),
+                  }}
+                >
+                  {currentUser.avatar_url ? (
+                    <img
+                      src={currentUser.avatar_url}
+                      alt="Me"
+                      className="w-full h-full rounded-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    getInitials(currentUser.display_name || currentUser.username || 'Me')
+                  )}
+                  <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-[#080b10] border border-[#212a38] rounded-full flex items-center justify-center text-[#20e3a2]">
+                    <Shield className="w-2.5 h-2.5" />
+                  </div>
+                </div>
+              ) : (
+                <div
+                  className="w-9.5 h-9.5 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-sm flex-shrink-0 relative"
+                  style={{
+                    background: peerProfile?.avatar_url ? 'none' : getAvatarStyle(seed),
+                  }}
+                >
+                  {peerProfile?.avatar_url ? (
+                    <img
+                      src={peerProfile.avatar_url}
+                      alt={peerProfile.display_name || ''}
+                      className="w-full h-full rounded-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    getInitials(peerProfile?.display_name || peerProfile?.username || 'V')
+                  )}
+                </div>
+              )}
+
+              {/* Thinking Speech Bubble representation as requested */}
+              {thinkingText && (
+                <div className="absolute top-[38px] left-0 z-30 animate-pulse">
+                  <div className="relative bg-[#1d2733] border border-[#2c3848] text-[#eef1f6] text-[10px] px-2.5 py-1 rounded-xl shadow-xl whitespace-nowrap max-w-[220px] truncate flex items-center gap-1">
+                    <span className="shrink-0 text-xs">💭</span>
+                    <span className="font-semibold">{thinkingText}</span>
+                    {/* Bubble arrow pointing straight up to the avatar */}
+                    <div className="absolute -top-[4px] left-3.5 w-2 h-2 bg-[#1d2733] border-l border-t border-[#2c3848] rotate-45" />
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="min-w-0">
               <div className="font-display font-bold text-[14px] text-white leading-tight truncate">
                 {currentGroup ? currentGroup.name : isMeSpace ? 'Me' : chatId === 'general' ? 'VyperVic General' : peerProfile?.display_name || peerProfile?.username}
               </div>
               <p className="text-[10px] text-[#5a6478] font-mono leading-none mt-0.5">
-                {currentGroup ? `${currentGroup.members?.length || 0} members` : isMeSpace ? 'Private space' : chatId === 'general' ? `${allProfiles.length} operators online` : peerProfile?.is_online ? 'Online' : 'Offline'}
+                {currentGroup ? `${onlineCount} member${onlineCount === 1 ? '' : 's'} online` : isMeSpace ? 'Private space' : chatId === 'general' ? `${allProfiles.length} operators online` : isUserOnline(peerProfile) ? 'Online' : 'Offline'}
               </p>
             </div>
           </div>
@@ -1662,7 +1725,7 @@ export default function ChatScreen({
                                 
                                 <div className="flex-1 min-w-0">
                                   <p className="font-bold text-[12.5px] text-white leading-tight">
-                                    {isVoice ? 'Secure Voice Call' : 'Secure Video Call'}
+                                    {isVoice ? 'Voice Call' : 'Video Call'}
                                   </p>
                                   <p className="text-[10px] text-[#8d97ab] mt-0.5 font-medium truncate flex items-center gap-1.5">
                                     <span>by {callerId === currentUser.id ? 'You' : callerName}</span>
@@ -1834,9 +1897,9 @@ export default function ChatScreen({
                           )}
                         </button>
                         <div className="flex-1">
-                          <p className="text-[10px] font-bold leading-tight">Secure Voice Note</p>
+                          <p className="text-[10px] font-bold leading-tight">Voice Note</p>
                           <p className="text-[9px] text-[#8d97ab] font-mono mt-0.5">
-                            {playingMsgId === msg.id ? 'Playing back...' : 'Encrypted file'}
+                            {playingMsgId === msg.id ? 'Playing back...' : 'Audio recording'}
                           </p>
                         </div>
                       </div>
@@ -1852,7 +1915,7 @@ export default function ChatScreen({
                         <span className="inline-flex items-center">
                           {msgStatus === 'read' ? (
                             <CheckCheck className="w-3.5 h-3.5 text-[#20e3a2]" title="Read" />
-                          ) : peerProfile?.is_online ? (
+                          ) : isUserOnline(peerProfile) ? (
                             <CheckCheck className="w-3.5 h-3.5 text-white/40" title="Delivered" />
                           ) : (
                             <Check className="w-3.5 h-3.5 text-white/30" title="Sent" />
@@ -1940,6 +2003,10 @@ export default function ChatScreen({
                   onTouchStart={() => startLongPress(msg)}
                   onTouchEnd={cancelLongPress}
                   onTouchMove={cancelLongPress}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setLongPressedMsg(msg);
+                  }}
                   className={`relative flex items-end gap-2 group ${isMe ? 'justify-end' : 'justify-start'} rounded-xl transition-all duration-300 p-1 ${
                     highlightedMsgId === msg.id ? 'bg-[#20e3a2]/5' : ''
                   }`}
@@ -2240,7 +2307,7 @@ export default function ChatScreen({
               <input
                 type="text"
                 ref={inputRef}
-                placeholder="Secure message stream..."
+                placeholder="Type a message..."
                 className="flex-1 bg-transparent border-none outline-none text-xs text-[#eef1f6] font-semibold placeholder-[#5a6478]"
                 value={text}
                 onChange={handleTextChange}
@@ -2261,7 +2328,7 @@ export default function ChatScreen({
                 type="button"
                 onClick={startRecording}
                 className="w-10.5 h-10.5 rounded-2xl bg-[#161d28] border border-[#212a38] text-[#20e3a2] hover:bg-[#20e3a2]/5 flex items-center justify-center cursor-pointer transition-all active:scale-95"
-                title="Record secure voice note"
+                title="Record voice note"
               >
                 <Mic className="w-4.5 h-4.5" />
               </button>
@@ -3102,11 +3169,11 @@ export default function ChatScreen({
 
                 {/* Online status tag */}
                 <span className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
-                  selectedUserProfile.is_online 
+                  isUserOnline(selectedUserProfile) 
                     ? 'bg-emerald-500/10 text-[#20e3a2] border-emerald-500/20' 
                     : 'bg-white/5 text-[#8d97ab] border-white/5'
                 }`}>
-                  {selectedUserProfile.is_online ? 'connected' : 'offline'}
+                  {isUserOnline(selectedUserProfile) ? 'connected' : 'offline'}
                 </span>
               </div>
 
@@ -3136,7 +3203,7 @@ export default function ChatScreen({
                   }}
                   className="mt-5 w-full py-2.5 rounded-xl bg-[#7c5cff] hover:bg-[#6849eb] text-white font-bold text-xs transition-colors shadow-lg shadow-[#7c5cff]/20 cursor-pointer"
                 >
-                  Start Secure DM
+                  Start Direct Message
                 </button>
               )}
             </div>
@@ -3149,13 +3216,6 @@ export default function ChatScreen({
         <>
           <div className="fixed inset-0 z-20" onClick={() => setShowDropdown(false)} />
           <div className="absolute right-4 top-16 w-52 bg-[#121924]/95 border border-[#212a38]/80 rounded-2xl p-2 shadow-[0_10px_30px_rgba(0,0,0,0.5)] backdrop-blur-md z-30 flex flex-col gap-1 transition-all duration-200">
-            <button
-              onClick={() => { setShowDropdown(false); setShowThemePicker(true); }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 text-left text-xs font-semibold text-white transition-colors cursor-pointer"
-            >
-              <Palette className="w-4 h-4 text-[#20e3a2]" />
-              Chat Theme
-            </button>
             <button
               onClick={() => { setShowDropdown(false); setShowMediaLinksDocs(true); }}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 text-left text-xs font-semibold text-white transition-colors cursor-pointer"
@@ -3175,12 +3235,19 @@ export default function ChatScreen({
             {!isMeSpace && (
               <button
                 onClick={() => { setShowDropdown(false); setShowCallLogs(true); }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 text-left text-xs font-semibold text-white transition-colors cursor-pointer border-t border-[#212a38]/45 pt-2.5 mt-1"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 text-left text-xs font-semibold text-white transition-colors cursor-pointer"
               >
                 <Phone className="w-4 h-4 text-[#20e3a2]" />
                 Call History Log
               </button>
             )}
+            <button
+              onClick={() => { setShowDropdown(false); setShowThemePicker(true); }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 text-left text-xs font-semibold text-white transition-colors cursor-pointer border-t border-[#212a38]/45 pt-2.5 mt-1"
+            >
+              <Palette className="w-4 h-4 text-[#20e3a2]" />
+              Chat Theme
+            </button>
           </div>
         </>
       )}
@@ -3200,7 +3267,7 @@ export default function ChatScreen({
               <h3 className="font-display font-bold text-sm text-white flex items-center gap-2">
                 <span>🎨 Chat Personalization Studio</span>
               </h3>
-              <p className="text-[10px] text-[#8d97ab] leading-relaxed mt-0.5">Customize your secure channel overlay. Adjust brightness, crop image offsets, or select custom ambient gradients.</p>
+              <p className="text-[10px] text-[#8d97ab] leading-relaxed mt-0.5">Customize your chat channel overlay. Adjust brightness, crop image offsets, or select custom ambient gradients.</p>
             </div>
           </div>
 
@@ -3227,7 +3294,7 @@ export default function ChatScreen({
               {/* Sample Chat Bubbles to show readability */}
               <div className="relative z-10 flex flex-col gap-2 flex-1 justify-center max-w-[280px] mx-auto w-full">
                 <div className="self-start bg-[#161d28]/90 border border-[#212a38]/80 rounded-xl px-2.5 py-1.5 text-[9.5px] text-[#eef1f6] font-medium leading-normal shadow">
-                  🔒 Secure cryptographic channel.
+                  🔒 Direct connection established.
                 </div>
                 <div className="self-end bg-[#20e3a2]/95 text-black rounded-xl px-2.5 py-1.5 text-[9.5px] font-bold leading-normal shadow">
                   Excellent, readable text display! 👍
@@ -3482,7 +3549,7 @@ export default function ChatScreen({
                 return (
                   <div className="flex flex-col items-center justify-center py-20 text-center animate-fade-in">
                     <Link className="w-10 h-10 text-[#5a6478] mb-3 opacity-50" />
-                    <p className="text-xs text-[#8d97ab]">No secure URLs shared yet</p>
+                    <p className="text-xs text-[#8d97ab]">No links shared yet</p>
                   </div>
                 );
               }
@@ -3568,16 +3635,63 @@ export default function ChatScreen({
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
-              <h3 className="font-display font-bold text-sm text-white">🛡️ Group Secure channel info</h3>
-              <p className="text-[10px] text-[#8d97ab] mt-0.5">Manage secure link keys, administrators, and members</p>
+              <h3 className="font-display font-bold text-sm text-white">🛡️ Group Info</h3>
+              <p className="text-[10px] text-[#8d97ab] mt-0.5">Manage administrators and members</p>
             </div>
           </div>
 
           {/* Group Info Block */}
-          <div className="text-center shrink-0 border-b border-[#212a38] pb-4 mb-4">
+          <div className="shrink-0 border-b border-[#212a38] pb-4 mb-4">
             {currentGroup.creator_id === currentUser.id ? (
               // Editable mode for group admin (Requirement 6)
-              <div className="space-y-3">
+              <div className="space-y-4">
+                {/* Group Cover Photo Editable Area */}
+                <div className="w-full h-24 rounded-xl relative overflow-hidden bg-gradient-to-r from-[#7c5cff]/20 to-[#20e3a2]/20 border border-[#212a38]/60 group/cover mb-2">
+                  {editGroupCover ? (
+                    <img
+                      src={editGroupCover}
+                      alt="Group Cover"
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : null}
+                  
+                  {/* Hover buttons */}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/cover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                    <label className="flex items-center gap-1 text-[10px] text-white bg-black/60 px-2 py-1 rounded-lg border border-white/10 shadow-lg cursor-pointer hover:bg-black/80 transition-colors">
+                      <Camera className="w-3.5 h-3.5 text-[#20e3a2]" />
+                      <span>Upload Cover</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              if (reader.result && typeof reader.result === 'string') {
+                                setEditGroupCover(reader.result);
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                    {editGroupCover && (
+                      <button
+                        type="button"
+                        onClick={() => setEditGroupCover('')}
+                        className="flex items-center gap-1 text-[10px] text-red-400 bg-black/60 px-2 py-1 rounded-lg border border-red-500/20 shadow-lg cursor-pointer hover:bg-black/80 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Remove</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-center gap-3">
                   {/* Icon preview */}
                   <div className="relative w-14 h-14 rounded-2xl bg-[#161d28] border-2 border-[#20e3a2] flex items-center justify-center text-2xl overflow-hidden shadow-inner shrink-0">
@@ -3628,19 +3742,40 @@ export default function ChatScreen({
                   </div>
                 </div>
 
-                {/* Edit Name Input */}
-                <div className="flex gap-1.5 justify-center items-center">
-                  <input
-                    type="text"
-                    className="bg-[#161d28] border border-[#212a38] rounded-xl px-2.5 py-1 text-center text-xs text-white font-bold outline-none focus:border-[#20e3a2] w-[180px]"
-                    value={editGroupName}
-                    onChange={(e) => setEditGroupName(e.target.value)}
-                    maxLength={30}
-                  />
+                {/* Edit Name and Description inputs */}
+                <div className="flex flex-col gap-2 w-full">
+                  <div className="space-y-0.5 text-left w-full">
+                    <label className="text-[9px] font-bold text-[#8d97ab] uppercase tracking-wider font-mono">Group Name</label>
+                    <input
+                      type="text"
+                      className="w-full bg-[#161d28] border border-[#212a38] rounded-xl px-2.5 py-1.5 text-xs text-white outline-none focus:border-[#20e3a2]"
+                      value={editGroupName}
+                      onChange={(e) => setEditGroupName(e.target.value)}
+                      maxLength={30}
+                    />
+                  </div>
+
+                  <div className="space-y-0.5 text-left w-full">
+                    <label className="text-[9px] font-bold text-[#8d97ab] uppercase tracking-wider font-mono">Biography & Description</label>
+                    <textarea
+                      className="w-full bg-[#161d28] border border-[#212a38] rounded-xl px-2.5 py-1.5 text-xs text-white outline-none focus:border-[#20e3a2] h-14 resize-none"
+                      placeholder="Describe this secure operator group..."
+                      value={editGroupDescription}
+                      onChange={(e) => setEditGroupDescription(e.target.value)}
+                      maxLength={150}
+                    />
+                  </div>
+
                   <button
                     onClick={() => {
                       if (!editGroupName.trim()) return;
-                      const updatedGrp = { ...currentGroup, name: editGroupName.trim(), icon: editGroupIcon };
+                      const updatedGrp = { 
+                        ...currentGroup, 
+                        name: editGroupName.trim(), 
+                        icon: editGroupIcon,
+                        description: editGroupDescription.trim(),
+                        cover_url: editGroupCover.trim()
+                      };
                       onUpdateGroup?.(updatedGrp);
                       sendBroadcastEvent('vyper_group_updated', { group: updatedGrp });
                       
@@ -3649,7 +3784,7 @@ export default function ChatScreen({
                         id: `msg_grp_rename_${Date.now()}`,
                         chat_id: chatId,
                         sender_id: currentUser.id,
-                        text: `🔒 System Update: ${currentUser.display_name || currentUser.username} has renamed the group to "${editGroupName.trim()}" and refreshed the secure channel icon.`,
+                        text: `🔒 System Update: ${currentUser.display_name || currentUser.username} has updated group settings (icon, name, cover or description).`,
                         file_name: null,
                         file_type: null,
                         file_data: null,
@@ -3658,26 +3793,49 @@ export default function ChatScreen({
                       };
                       onSendMessage?.(renameMsg);
                     }}
-                    className="px-2.5 py-1 rounded-lg bg-[#20e3a2] text-black text-[10px] font-bold hover:bg-[#20e3a2]/90 active:scale-95 transition-all cursor-pointer shadow-md shrink-0"
+                    className="w-full py-2 rounded-xl bg-[#20e3a2] text-black text-[10.5px] font-bold hover:bg-[#20e3a2]/90 active:scale-95 transition-all cursor-pointer shadow-md shrink-0 uppercase tracking-wider"
                   >
-                    Save
+                    Save Changes
                   </button>
                 </div>
               </div>
             ) : (
               // Normal view mode for other members
-              <>
-                <div className="w-16 h-16 rounded-2xl bg-[#161d28] border border-[#212a38] flex items-center justify-center text-3xl mx-auto shadow-md relative overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-br from-[#7c5cff]/15 to-[#20e3a2]/15 opacity-75" />
-                  {currentGroup.icon && (currentGroup.icon.startsWith('data:image/') || currentGroup.icon.startsWith('http')) ? (
-                    <img src={currentGroup.icon} alt="" className="w-full h-full object-cover relative z-10" />
-                  ) : (
-                    <span className="relative z-10">{currentGroup.icon || '👥'}</span>
+              <div className="relative rounded-2xl overflow-hidden bg-[#161d28]/30 border border-[#212a38]/40 pb-4">
+                {/* Group Cover */}
+                <div className="w-full h-16 bg-gradient-to-r from-[#7c5cff]/20 to-[#20e3a2]/20 relative overflow-hidden">
+                  {currentGroup.cover_url ? (
+                    <img 
+                      src={currentGroup.cover_url} 
+                      alt="" 
+                      className="w-full h-full object-cover cursor-pointer"
+                      onClick={() => {
+                        onViewProfileDetail?.('group', currentGroup);
+                      }}
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : null}
+                </div>
+
+                <div className="px-3 -mt-6 relative z-10 text-center">
+                  <div className="w-12 h-12 rounded-xl bg-[#161d28] border border-[#212a38] flex items-center justify-center text-2xl mx-auto shadow-md relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#7c5cff]/15 to-[#20e3a2]/15 opacity-75" />
+                    {currentGroup.icon && (currentGroup.icon.startsWith('data:image/') || currentGroup.icon.startsWith('http')) ? (
+                      <img src={currentGroup.icon} alt="" className="w-full h-full object-cover relative z-10" />
+                    ) : (
+                      <span className="relative z-10">{currentGroup.icon || '👥'}</span>
+                    )}
+                  </div>
+                  <h3 className="font-display font-black text-xs text-white mt-2 truncate">{currentGroup.name}</h3>
+                  <p className="text-[8.5px] text-[#8d97ab] font-mono uppercase tracking-wider mt-0.5">Group Channel</p>
+                  
+                  {currentGroup.description && (
+                    <p className="text-[10px] text-[#8d97ab] mt-2 italic px-2 line-clamp-2 leading-relaxed">
+                      "{currentGroup.description}"
+                    </p>
                   )}
                 </div>
-                <h3 className="font-display font-black text-sm text-white mt-2.5">{currentGroup.name}</h3>
-                <p className="text-[10px] text-[#8d97ab] font-mono uppercase tracking-wider mt-0.5">Secure Group Link</p>
-              </>
+              </div>
             )}
           </div>
 
@@ -3685,13 +3843,14 @@ export default function ChatScreen({
           <div className="flex-1 flex flex-col min-h-0 space-y-4">
             {/* Section 1: Members list */}
             <div className="flex-1 overflow-y-auto pr-1">
-              <h4 className="text-[10.5px] font-bold text-[#5a6478] uppercase tracking-wider mb-2 px-1">Active Members ({currentGroup.members?.length || 0})</h4>
+              <h4 className="text-[10.5px] font-bold text-[#5a6478] uppercase tracking-wider mb-2 px-1 font-mono">Active Members ({currentGroup.members?.length || 0})</h4>
               <div className="space-y-2">
-                {currentGroup.members?.map((memId) => {
+                {sortedGroupMembers.map((memId) => {
                   const memProfile = allProfiles.find(p => p.id === memId);
                   if (!memProfile) return null;
                   const isCreator = currentGroup.creator_id === memId;
-                  const isAdminSelf = currentGroup.creator_id === currentUser.id;
+                  const isExplicitAdmin = currentGroup.admins?.includes(memId) || false;
+                  const isMemAdmin = isCreator || isExplicitAdmin;
                   const isMemSelf = memId === currentUser.id;
                   const seedVal = memProfile.username?.charCodeAt(0) || 0;
 
@@ -3706,55 +3865,121 @@ export default function ChatScreen({
                             }}
                           >
                             {memProfile.avatar_url ? (
-                              <img src={memProfile.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
+                                <img src={memProfile.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
                             ) : (
-                              getInitials(memProfile.display_name || memProfile.username || 'V')
+                                getInitials(memProfile.display_name || memProfile.username || 'V')
                             )}
                           </div>
                           <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border border-[#080b10] flex items-center justify-center">
-                            <span className={`w-full h-full rounded-full ${memProfile.is_online ? 'bg-[#20e3a2]' : 'bg-[#5a6478]'}`} />
+                            <span className={`w-full h-full rounded-full ${isUserOnline(memProfile) ? 'bg-[#20e3a2]' : 'bg-[#5a6478]'}`} />
                           </span>
                         </div>
                         <div className="min-w-0">
                           <div className="text-[11.5px] font-bold text-white truncate flex items-center gap-1.5">
                             <span>{memProfile.display_name || memProfile.username}</span>
-                            {isCreator && (
-                              <span className="text-[8px] font-mono font-bold bg-[#20e3a2]/10 text-[#20e3a2] border border-[#20e3a2]/20 px-1 py-0.2 rounded">ADMIN</span>
+                            {isMemAdmin && (
+                              <span className="text-[7.5px] font-mono font-bold bg-[#20e3a2]/10 text-[#20e3a2] border border-[#20e3a2]/20 px-1 py-0.2 rounded">ADMIN</span>
                             )}
                           </div>
                           <p className="text-[9.5px] text-[#8d97ab] font-mono truncate">@{memProfile.username}</p>
                         </div>
                       </div>
 
-                      {/* Remove members capability */}
-                      {isAdminSelf && !isMemSelf && (
-                        <button
-                          onClick={() => {
-                            const updatedMembers = currentGroup.members.filter(id => id !== memId);
-                            const updatedGrp = { ...currentGroup, members: updatedMembers };
-                            onUpdateGroup?.(updatedGrp);
-                            
-                            sendBroadcastEvent('vyper_group_updated', { group: updatedGrp });
-                            
-                            const alertMsg = {
-                              id: `msg_grp_kick_${Date.now()}`,
-                              chat_id: chatId,
-                              sender_id: currentUser.id,
-                              text: `🔒 System Update: ${memProfile.display_name || memProfile.username} has been removed from the secure channel by Admin.`,
-                              file_name: null,
-                              file_type: null,
-                              file_data: null,
-                              is_voice: false,
-                              created_at: new Date().toISOString(),
-                            };
-                            onSendMessage?.(alertMsg);
-                          }}
-                          className="p-1.5 rounded-xl border border-red-500/10 bg-red-500/5 hover:bg-red-500/20 text-red-400 cursor-pointer transition-colors shrink-0"
-                          title="Remove from Group"
-                        >
-                          <UserMinus className="w-4 h-4" />
-                        </button>
-                      )}
+                      {/* Administrative actions */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {/* Make Admin Button */}
+                        {isCurrentUserAdmin && !isMemAdmin && (
+                          <button
+                            onClick={() => {
+                              const currentAdmins = currentGroup.admins || [];
+                              if (!currentAdmins.includes(memId)) {
+                                const updatedAdmins = [...currentAdmins, memId];
+                                const updatedGrp = { ...currentGroup, admins: updatedAdmins };
+                                onUpdateGroup?.(updatedGrp);
+                                sendBroadcastEvent('vyper_group_updated', { group: updatedGrp });
+                                
+                                const alertMsg = {
+                                  id: `msg_grp_admin_${Date.now()}`,
+                                  chat_id: chatId,
+                                  sender_id: currentUser.id,
+                                  text: `🔒 System Update: ${memProfile.display_name || memProfile.username} has been promoted to Admin by ${currentUser.display_name || currentUser.username}.`,
+                                  file_name: null,
+                                  file_type: null,
+                                  file_data: null,
+                                  is_voice: false,
+                                  created_at: new Date().toISOString(),
+                                };
+                                onSendMessage?.(alertMsg);
+                              }
+                            }}
+                            className="p-1 rounded-lg border border-[#20e3a2]/10 bg-[#20e3a2]/5 hover:bg-[#20e3a2]/20 text-[#20e3a2] cursor-pointer transition-colors"
+                            title="Promote to Admin"
+                          >
+                            <Shield className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        {/* Demote Admin Button */}
+                        {currentGroup.creator_id === currentUser.id && isExplicitAdmin && (
+                          <button
+                            onClick={() => {
+                              const currentAdmins = currentGroup.admins || [];
+                              const updatedAdmins = currentAdmins.filter(id => id !== memId);
+                              const updatedGrp = { ...currentGroup, admins: updatedAdmins };
+                              onUpdateGroup?.(updatedGrp);
+                              sendBroadcastEvent('vyper_group_updated', { group: updatedGrp });
+                              
+                              const alertMsg = {
+                                id: `msg_grp_demote_${Date.now()}`,
+                                chat_id: chatId,
+                                sender_id: currentUser.id,
+                                text: `🔒 System Update: ${memProfile.display_name || memProfile.username} has been demoted from Admin by Founder.`,
+                                file_name: null,
+                                file_type: null,
+                                file_data: null,
+                                is_voice: false,
+                                created_at: new Date().toISOString(),
+                              };
+                              onSendMessage?.(alertMsg);
+                            }}
+                            className="p-1 rounded-lg border border-yellow-500/10 bg-yellow-500/5 hover:bg-yellow-500/20 text-yellow-400 cursor-pointer transition-colors"
+                            title="Demote Admin"
+                          >
+                            <UserMinus className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        {/* Remove Member Button */}
+                        {isCurrentUserAdmin && !isCreator && !isMemSelf && (
+                          <button
+                            onClick={() => {
+                              const updatedMembers = currentGroup.members.filter(id => id !== memId);
+                              const updatedAdmins = (currentGroup.admins || []).filter(id => id !== memId);
+                              const updatedGrp = { ...currentGroup, members: updatedMembers, admins: updatedAdmins };
+                              onUpdateGroup?.(updatedGrp);
+                              
+                              sendBroadcastEvent('vyper_group_updated', { group: updatedGrp });
+                              
+                              const alertMsg = {
+                                id: `msg_grp_kick_${Date.now()}`,
+                                chat_id: chatId,
+                                sender_id: currentUser.id,
+                                text: `🔒 System Update: ${memProfile.display_name || memProfile.username} has been removed from the group by Admin.`,
+                                file_name: null,
+                                file_type: null,
+                                file_data: null,
+                                is_voice: false,
+                                created_at: new Date().toISOString(),
+                              };
+                              onSendMessage?.(alertMsg);
+                            }}
+                            className="p-1.5 rounded-xl border border-red-500/10 bg-red-500/5 hover:bg-red-500/20 text-red-400 cursor-pointer transition-colors shrink-0"
+                            title="Remove from Group"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -3762,68 +3987,70 @@ export default function ChatScreen({
             </div>
 
             {/* Add member to group capability */}
-            <div className="border-t border-[#212a38] pt-3 shrink-0 bg-[#121924]/40 p-3 rounded-2xl border border-[#212a38]/40">
-              <h4 className="text-[10.5px] font-bold text-[#5a6478] uppercase tracking-wider mb-2 px-1">Add Member to Group</h4>
-              
-              {(() => {
-                const addableProfiles = allProfiles.filter(p => !currentGroup.members?.includes(p.id));
-                if (addableProfiles.length === 0) {
-                  return <p className="text-[10.5px] text-[#5a6478] px-1 italic">All secure contacts are already members.</p>;
-                }
-                return (
-                  <div className="max-h-[120px] overflow-y-auto pr-1 space-y-1.5">
-                    {addableProfiles.map(user => {
-                      return (
-                        <div key={user.id} className="flex items-center justify-between p-1.5 rounded-lg bg-black/15 border border-[#212a38]/40 animate-fade-in">
-                          <span className="text-[11px] font-bold text-white truncate max-w-[180px]">{user.display_name || user.username}</span>
-                          <button
-                            onClick={() => {
-                              const updatedMembers = [...currentGroup.members, user.id];
-                              const updatedGrp = { ...currentGroup, members: updatedMembers };
-                              onUpdateGroup?.(updatedGrp);
+            {isCurrentUserAdmin && (
+              <div className="border-t border-[#212a38] pt-3 shrink-0 bg-[#121924]/40 p-3 rounded-2xl border border-[#212a38]/40">
+                <h4 className="text-[10.5px] font-bold text-[#5a6478] uppercase tracking-wider mb-2 px-1 font-mono">Add Member to Group</h4>
+                
+                {(() => {
+                  const addableProfiles = allProfiles.filter(p => !currentGroup.members?.includes(p.id));
+                  if (addableProfiles.length === 0) {
+                    return <p className="text-[10.5px] text-[#5a6478] px-1 italic">All contacts are already members.</p>;
+                  }
+                  return (
+                    <div className="max-h-[200px] overflow-y-auto pr-1 space-y-1.5">
+                      {addableProfiles.map(user => {
+                        return (
+                          <div key={user.id} className="flex items-center justify-between p-1.5 rounded-lg bg-black/15 border border-[#212a38]/40 animate-fade-in">
+                            <span className="text-[11px] font-bold text-white truncate max-w-[180px]">{user.display_name || user.username}</span>
+                            <button
+                              onClick={() => {
+                                const updatedMembers = [...currentGroup.members, user.id];
+                                const updatedGrp = { ...currentGroup, members: updatedMembers };
+                                onUpdateGroup?.(updatedGrp);
 
-                              sendBroadcastEvent('vyper_group_updated', { group: updatedGrp });
+                                sendBroadcastEvent('vyper_group_updated', { group: updatedGrp });
 
-                              const joinSystemMsg = {
-                                id: `msg_grp_add_${Date.now()}`,
-                                chat_id: chatId,
-                                sender_id: currentUser.id,
-                                text: `🔒 System Update: ${user.display_name || user.username} has been added to this secure group channel.`,
-                                file_name: null,
-                                file_type: null,
-                                file_data: null,
-                                is_voice: false,
-                                created_at: new Date().toISOString(),
-                              };
-                              onSendMessage?.(joinSystemMsg);
-                            }}
-                            className="py-1.5 px-3 rounded-xl bg-[#20e3a2] text-black text-[9px] font-extrabold hover:bg-[#20e3a2]/90 transition-all flex items-center gap-1 cursor-pointer uppercase tracking-wider"
-                          >
-                            <UserPlus className="w-3 h-3" />
-                            Add
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
-            </div>
+                                const joinSystemMsg = {
+                                  id: `msg_grp_add_${Date.now()}`,
+                                  chat_id: chatId,
+                                  sender_id: currentUser.id,
+                                  text: `🔒 System Update: ${user.display_name || user.username} has been added to this group.`,
+                                  file_name: null,
+                                  file_type: null,
+                                  file_data: null,
+                                  is_voice: false,
+                                  created_at: new Date().toISOString(),
+                                };
+                                onSendMessage?.(joinSystemMsg);
+                              }}
+                              className="py-1.5 px-3 rounded-xl bg-[#20e3a2] text-black text-[9px] font-extrabold hover:bg-[#20e3a2]/90 transition-all flex items-center gap-1 cursor-pointer uppercase tracking-wider"
+                            >
+                              <UserPlus className="w-3 h-3" />
+                              Add
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </div>
 
-          {/* Admin disband group secure channel option */}
+          {/* Admin disband group option */}
           {currentGroup.creator_id === currentUser.id && (
             <div className="border-t border-[#212a38] pt-3 mt-3 shrink-0">
               <button
                 onClick={() => {
-                  if (window.confirm('Are you absolutely sure you want to disband this group secure channel? All members will lose access.')) {
+                  if (window.confirm('Are you absolutely sure you want to disband this group? All members will lose access.')) {
                     onDisbandGroup?.(chatId);
                   }
                 }}
                 className="w-full py-2.5 bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
-                Disband Group Secure Channel
+                Disband Group
               </button>
             </div>
           )}
@@ -3844,9 +4071,9 @@ export default function ChatScreen({
             <div>
               <h3 className="font-display font-bold text-sm text-white flex items-center gap-1.5">
                 <Phone className="w-4 h-4 text-[#20e3a2]" />
-                <span>Secure Voice & Video Call Log</span>
+                <span>Call Log</span>
               </h3>
-              <p className="text-[10px] text-[#8d97ab] mt-0.5">End-to-end encrypted peer voice and video transmission logs</p>
+              <p className="text-[10px] text-[#8d97ab] mt-0.5">Voice and video call history logs</p>
             </div>
           </div>
 
@@ -3858,7 +4085,7 @@ export default function ChatScreen({
                   <PhoneOff className="w-8 h-8 text-[#5a6478] opacity-60" />
                 </div>
                 <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">No call history logs registered</span>
-                <p className="text-[10px] text-gray-500 mt-1 max-w-[200px]">Secure calls placed over this peer link will appear here instantly</p>
+                <p className="text-[10px] text-gray-500 mt-1 max-w-[200px]">Calls placed over this link will appear here instantly</p>
               </div>
             ) : (
               callHistory.map((call) => {
@@ -3982,6 +4209,384 @@ export default function ChatScreen({
                 );
               })
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Message Metadata / Info Overlay (Delivered, Sent, Read receipts) */}
+      {infoMsg && (
+        <div 
+          className="fixed inset-0 z-[110] backdrop-blur-xl bg-[#030509]/90 flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setInfoMsg(null)}
+        >
+          <div 
+            className="w-full max-w-sm bg-[#161d28] border border-[#212a38] rounded-3xl p-6 shadow-2xl relative flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-[#212a38] pb-3">
+              <h4 className="font-display font-black text-xs text-white uppercase tracking-wider flex items-center gap-1.5 text-[#20e3a2]">
+                <Info className="w-4 h-4 text-[#20e3a2]" /> Message Metadata
+              </h4>
+              <button 
+                onClick={() => setInfoMsg(null)}
+                className="w-6 h-6 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[#8d97ab] hover:text-white cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3.5 py-2">
+              <div className="flex items-start gap-3">
+                <span className="w-2 h-2 rounded-full bg-blue-500 mt-1.5" />
+                <div>
+                  <span className="text-[10px] text-[#8d97ab] font-mono uppercase font-bold">Created / Sent</span>
+                  <p className="text-xs text-white font-semibold mt-0.5">
+                    {new Date(infoMsg.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' })}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 mt-1.5" />
+                <div>
+                  <span className="text-[10px] text-[#8d97ab] font-mono uppercase font-bold">Delivered</span>
+                  <p className="text-xs text-white font-semibold mt-0.5">
+                    {new Date(infoMsg.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' })}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                {(() => {
+                  const rpts = Object.entries(readReceipts || {})
+                    .filter(([cid, r]) => r.lastReadMessageId === infoMsg.id || new Date(r.timestamp).getTime() >= new Date(infoMsg.created_at).getTime())
+                    .map(([cid, r]) => ({ ...r, chatId: cid }));
+                  const isRead = rpts.length > 0;
+                  return (
+                    <>
+                      <span className={`w-2 h-2 rounded-full mt-1.5 ${isRead ? 'bg-[#20e3a2]' : 'bg-gray-600'}`} />
+                      <div>
+                        <span className="text-[10px] text-[#8d97ab] font-mono uppercase font-bold">Read Status</span>
+                        {isRead ? (
+                          <div className="flex flex-col gap-1 mt-1">
+                            {rpts.map((receipt) => {
+                              const readerProfile = allProfiles.find(p => p.id === receipt.readerId);
+                              return (
+                                <div key={`${receipt.readerId}-${receipt.chatId}`} className="text-xs text-white font-semibold">
+                                  Read by <span className="text-[#20e3a2]">{getContactDisplayName(readerProfile)}</span> at {new Date(receipt.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-400 mt-0.5 font-medium italic">Sent & Delivered (Unread by peer)</p>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+
+            <button
+              onClick={() => setInfoMsg(null)}
+              className="w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-xs transition-colors cursor-pointer uppercase tracking-wider text-center"
+            >
+              Close Info
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Message Deletion Confirmation Modal */}
+      {msgToDelete && (
+        <div 
+          className="fixed inset-0 z-[110] backdrop-blur-xl bg-[#030509]/90 flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setMsgToDelete(null)}
+        >
+          <div 
+            className="w-full max-w-sm bg-[#161d28] border border-[#212a38] rounded-3xl p-6 shadow-2xl relative flex flex-col gap-5 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto text-rose-500">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            
+            <div>
+              <h4 className="font-display font-black text-sm text-white">Delete Message?</h4>
+              <p className="text-[11px] text-[#8d97ab] mt-1.5">
+                {msgToDelete.forEveryone 
+                  ? "This message was sent by you. You can choose to delete it from everyone's screen, or only delete it from your screen."
+                  : "Are you sure you want to delete this message? This action only removes it from your screen."
+                }
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {msgToDelete.forEveryone ? (
+                <>
+                  <button
+                    onClick={() => {
+                      handleDeleteForEveryone(msgToDelete.id);
+                      setMsgToDelete(null);
+                      setLongPressedMsg(null);
+                    }}
+                    className="w-full py-3.5 rounded-2xl bg-rose-500 hover:bg-rose-600 text-white font-extrabold text-xs transition-colors cursor-pointer uppercase tracking-wider"
+                  >
+                    Delete from Everyone
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleDeleteForMe(msgToDelete.id);
+                      setMsgToDelete(null);
+                      setLongPressedMsg(null);
+                    }}
+                    className="w-full py-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-xs transition-colors cursor-pointer uppercase tracking-wider"
+                  >
+                    Delete from Me
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => {
+                    handleDeleteForMe(msgToDelete.id);
+                    setMsgToDelete(null);
+                    setLongPressedMsg(null);
+                  }}
+                  className="w-full py-3.5 rounded-2xl bg-rose-500 hover:bg-rose-600 text-white font-extrabold text-xs transition-colors cursor-pointer uppercase tracking-wider"
+                >
+                  Delete from Me
+                </button>
+              )}
+
+              <button
+                onClick={() => setMsgToDelete(null)}
+                className="w-full py-2 rounded-xl text-[#8d97ab] hover:text-white font-semibold text-xs cursor-pointer transition-colors mt-1"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Message Editing Overlay */}
+      {editingMsg && (
+        <div 
+          className="fixed inset-0 z-[110] backdrop-blur-xl bg-[#030509]/95 flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setEditingMsg(null)}
+        >
+          <div 
+            className="w-full max-w-md bg-[#161d28] border border-[#212a38] rounded-3xl p-6 shadow-2xl relative flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-[#212a38] pb-3">
+              <h4 className="font-display font-black text-xs text-white uppercase tracking-wider flex items-center gap-1.5 text-purple-400">
+                <Edit3 className="w-4 h-4 text-purple-400" /> Edit Message
+              </h4>
+              <button 
+                onClick={() => setEditingMsg(null)}
+                className="w-6 h-6 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[#8d97ab] hover:text-white cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <textarea
+              value={editingMsg.text}
+              onChange={(e) => setEditingMsg({ ...editingMsg, text: e.target.value })}
+              className="w-full min-h-[100px] p-4 rounded-2xl bg-black/40 border border-[#212a38] text-white text-xs font-medium focus:outline-none focus:border-purple-500/50 resize-none leading-relaxed"
+              placeholder="Enter new text..."
+              autoFocus
+            />
+
+            <div className="flex gap-3 mt-1">
+              <button
+                onClick={() => setEditingMsg(null)}
+                className="flex-1 py-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-semibold text-xs transition-colors cursor-pointer uppercase tracking-wider text-center"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                className="flex-1 py-3.5 rounded-xl bg-[#7c5cff] hover:bg-[#7c5cff]/90 text-white font-extrabold text-xs transition-colors cursor-pointer uppercase tracking-wider text-center"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Message Long-press blur & focus options menu */}
+      {longPressedMsg && (
+        <div 
+          className="fixed inset-0 z-[100] backdrop-blur-xl bg-[#030509]/80 flex flex-col items-center justify-center p-4 animate-fade-in"
+          onClick={() => setLongPressedMsg(null)}
+        >
+          {/* Main container wrapper */}
+          <div 
+            className="w-full max-w-md bg-[#10151d]/90 border border-[#212a38] rounded-3xl p-5 shadow-2xl relative flex flex-col gap-4 backdrop-blur-md"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header: Highlight Title */}
+            <div className="flex items-center justify-between border-b border-[#212a38] pb-3 mb-1">
+              <div>
+                <span className="text-[10px] text-[#20e3a2] font-mono font-bold tracking-wider uppercase">Message Options</span>
+                <h4 className="font-display font-black text-xs text-white">
+                  {longPressedMsg.sender_id === currentUser.id 
+                    ? 'Sent by You' 
+                    : `Received from ${getContactDisplayName(allProfiles.find(p => p.id === longPressedMsg.sender_id))}`
+                  }
+                </h4>
+              </div>
+              <button 
+                onClick={() => setLongPressedMsg(null)}
+                className="w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[#8d97ab] hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Render Scrollable Emojis row */}
+            <div className="bg-black/35 rounded-2xl p-2.5 border border-[#212a38]/60 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+              {unifiedEmojis.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => {
+                    onToggleReaction(longPressedMsg.id, emoji);
+                    setLongPressedMsg(null);
+                  }}
+                  className="text-2xl hover:scale-125 active:scale-110 transition-transform duration-150 p-1 shrink-0 cursor-pointer"
+                >
+                  {emoji}
+                </button>
+              ))}
+              <div className="w-[1px] h-6 bg-[#212a38] shrink-0 mx-1" />
+              <button
+                onClick={() => {
+                  const newEmoji = prompt("Enter an emoji to add:");
+                  if (newEmoji) {
+                    const emojiClean = newEmoji.trim();
+                    if (emojiClean) {
+                      setUnifiedEmojis((prev) => {
+                        const next = [...prev.slice(0, 9), emojiClean];
+                        localStorage.setItem('vyper_unified_reaction_emojis_v2', JSON.stringify(next));
+                        return next;
+                      });
+                    }
+                  }
+                }}
+                className="w-8 h-8 rounded-xl bg-[#20e3a2]/10 hover:bg-[#20e3a2]/20 border border-[#20e3a2]/30 flex items-center justify-center text-[#20e3a2] text-lg font-black shrink-0 cursor-pointer transition-colors"
+                title="Add Custom Emoji"
+              >
+                ＋
+              </button>
+            </div>
+
+            {/* Highlighted message text bubble content */}
+            <div className="p-4 rounded-2xl bg-white/5 border border-white/10 text-white relative">
+              {longPressedMsg.is_voice ? (
+                <div className="flex items-center gap-2">
+                  <Mic className="w-4 h-4 text-[#20e3a2]" />
+                  <span className="text-xs font-mono">🎤 Voice Note</span>
+                </div>
+              ) : longPressedMsg.file_name ? (
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-[#7c5cff]" />
+                  <span className="text-xs font-semibold truncate">{longPressedMsg.file_name}</span>
+                </div>
+              ) : (
+                <p className="text-sm break-words whitespace-pre-wrap leading-relaxed">{longPressedMsg.text}</p>
+              )}
+              <div className="text-[9px] text-[#8d97ab] font-mono mt-2 text-right">
+                {new Date(longPressedMsg.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+              </div>
+            </div>
+
+            {/* Dropdown Menu stack */}
+            <div className="flex flex-col gap-1.5">
+              {/* Star / Unstar Option */}
+              <button
+                onClick={() => {
+                  handleToggleStar(longPressedMsg.id);
+                  setLongPressedMsg(null);
+                }}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 transition-all cursor-pointer text-left group"
+              >
+                <span className="text-xs font-bold text-white group-hover:text-amber-400 transition-colors">
+                  {starredMsgIds.includes(longPressedMsg.id) ? 'Unstar Message' : 'Star Message'}
+                </span>
+                <Star className={`w-4 h-4 ${starredMsgIds.includes(longPressedMsg.id) ? 'text-amber-400 fill-current' : 'text-[#8d97ab]'}`} />
+              </button>
+
+              {/* Forward Option */}
+              <button
+                onClick={() => {
+                  setMsgToForward(longPressedMsg);
+                  setLongPressedMsg(null);
+                }}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 transition-all cursor-pointer text-left group"
+              >
+                <span className="text-xs font-bold text-white group-hover:text-[#20e3a2] transition-colors">Forward Message</span>
+                <Forward className="w-4 h-4 text-[#20e3a2]" />
+              </button>
+
+              {/* Copy Option */}
+              <button
+                onClick={() => {
+                  const textToCopy = longPressedMsg.text || longPressedMsg.file_name || '';
+                  navigator.clipboard.writeText(textToCopy);
+                  showLocalToast('Copied to clipboard!');
+                  setLongPressedMsg(null);
+                }}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 transition-all cursor-pointer text-left group"
+              >
+                <span className="text-xs font-bold text-white group-hover:text-sky-400 transition-colors">Copy Text</span>
+                <Copy className="w-4 h-4 text-sky-400" />
+              </button>
+
+              {/* Edit Option (if sent by current user) */}
+              {longPressedMsg.sender_id === currentUser.id && !longPressedMsg.is_voice && !longPressedMsg.file_name && (
+                <button
+                  onClick={() => {
+                    setEditingMsg({ id: longPressedMsg.id, text: longPressedMsg.text || '' });
+                  }}
+                  className="w-full flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 transition-all cursor-pointer text-left group"
+                >
+                  <span className="text-xs font-bold text-white group-hover:text-purple-400 transition-colors">Edit Message</span>
+                  <Edit3 className="w-4 h-4 text-purple-400" />
+                </button>
+              )}
+
+              {/* Info Option (if sent by current user) */}
+              {longPressedMsg.sender_id === currentUser.id && (
+                <button
+                  onClick={() => {
+                    setInfoMsg(longPressedMsg);
+                    setLongPressedMsg(null);
+                  }}
+                  className="w-full flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 transition-all cursor-pointer text-left group"
+                >
+                  <span className="text-xs font-bold text-white group-hover:text-teal-400 transition-colors">Message Info</span>
+                  <Info className="w-4 h-4 text-teal-400" />
+                </button>
+              )}
+
+              {/* Delete Option */}
+              <button
+                onClick={() => {
+                  setMsgToDelete({
+                    id: longPressedMsg.id,
+                    forEveryone: longPressedMsg.sender_id === currentUser.id
+                  });
+                }}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/30 transition-all cursor-pointer text-left group"
+              >
+                <span className="text-xs font-bold text-rose-500">Delete Message</span>
+                <Trash2 className="w-4 h-4 text-rose-500" />
+              </button>
+            </div>
           </div>
         </div>
       )}

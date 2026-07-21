@@ -18,6 +18,7 @@ import {
   X 
 } from 'lucide-react';
 import { Profile, Group } from '../types';
+import { isUserOnline, parseProfileAbout } from '../utils/customNames';
 
 interface FullscreenProfileProps {
   type: 'user' | 'group' | 'general';
@@ -40,6 +41,7 @@ export default function FullscreenProfile({
 }: FullscreenProfileProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showZoomedAvatar, setShowZoomedAvatar] = useState(false);
+  const [showZoomedCover, setShowZoomedCover] = useState(false);
 
   // Determine which layout to show
   const isGeneral = type === 'general';
@@ -110,6 +112,7 @@ export default function FullscreenProfile({
   let badgeStyle = '';
   let iconContent: React.ReactNode = null;
   let bgStyle: React.CSSProperties = {};
+  let parsedAbout: { thinking: string | null; coverUrl: string | null; about: string } | null = null;
 
   const handleMemberClick = (member: Profile) => {
     if (member.id === currentUser.id) return;
@@ -146,13 +149,25 @@ export default function FullscreenProfile({
     const group = data as Group;
     title = group.name;
     subTitle = `Group ID: ${group.id.replace('group:', '')}`;
-    bioText = `Custom operator group channel created to synchronize tasks.`;
+    bioText = group.description || 'Custom operator group channel created to synchronize tasks.';
     badgeText = 'Group Chat';
     badgeStyle = 'bg-[#7c5cff]/10 text-[#7c5cff] border-[#7c5cff]/20';
     
-    // Resolve members
+    // Resolve members and sort with creator/admins first
     const memberIds = group.members || [];
-    communityMembers = allProfiles.filter(p => memberIds.includes(p.id));
+    const resolvedMembers = allProfiles.filter(p => memberIds.includes(p.id));
+    resolvedMembers.sort((a, b) => {
+      const isACreator = group.creator_id === a.id;
+      const isBCreator = group.creator_id === b.id;
+      if (isACreator) return -1;
+      if (isBCreator) return 1;
+      const isAAdmin = (group.admins || []).includes(a.id);
+      const isBAdmin = (group.admins || []).includes(b.id);
+      if (isAAdmin && !isBAdmin) return -1;
+      if (!isAAdmin && isBAdmin) return 1;
+      return 0;
+    });
+    communityMembers = resolvedMembers;
 
     if (group.icon && (group.icon.startsWith('data:image/') || group.icon.startsWith('http'))) {
       iconContent = (
@@ -169,9 +184,10 @@ export default function FullscreenProfile({
     const profile = data as Profile;
     title = profile.display_name || profile.username || 'Operator';
     subTitle = `@${profile.username || 'unknown'}`;
-    bioText = profile.about || 'No operator bio provided. Communication route is active.';
-    badgeText = profile.is_online ? 'connected' : 'offline';
-    badgeStyle = profile.is_online 
+    parsedAbout = parseProfileAbout(profile.about);
+    bioText = parsedAbout.about || 'No operator bio provided. Communication route is active.';
+    badgeText = isUserOnline(profile) ? 'connected' : 'offline';
+    badgeStyle = isUserOnline(profile) 
       ? 'bg-emerald-500/10 text-[#20e3a2] border-emerald-500/20' 
       : 'bg-white/5 text-[#8d97ab] border-white/5';
     
@@ -201,6 +217,8 @@ export default function FullscreenProfile({
     return nameMatch || userMatch;
   });
 
+  const coverUrl = isGroup ? (data as Group)?.cover_url : parsedAbout?.coverUrl;
+
   return (
     <div className="fixed inset-0 bg-[#080b10] z-50 flex flex-col md:flex-row animate-fade-in text-left overflow-hidden">
       {/* Back button and screen header */}
@@ -217,8 +235,17 @@ export default function FullscreenProfile({
       {/* LEFT COLUMN: Main profile details card */}
       <div className={`w-full ${isUser ? 'max-w-xl mx-auto border-x border-[#212a38]' : 'md:w-[420px] shrink-0 border-b md:border-b-0 md:border-r border-[#212a38]'} flex flex-col relative overflow-y-auto pb-8`}>
         {/* Profile Header Image/Gradient Background */}
-        <div className="h-44 bg-gradient-to-r from-[#7c5cff]/30 to-[#20e3a2]/30 relative flex items-end justify-center">
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[#080b10]" />
+        <div className="h-44 relative flex items-end justify-center overflow-hidden bg-gradient-to-r from-[#7c5cff]/20 to-[#20e3a2]/20">
+          {coverUrl ? (
+            <img
+              src={coverUrl}
+              alt="Cover"
+              className="absolute inset-0 w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
+              onClick={() => setShowZoomedCover(true)}
+              referrerPolicy="no-referrer"
+            />
+          ) : null}
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#080b10]/40 to-[#080b10]" />
           
           {/* Badge at top right */}
           <span className={`absolute top-[calc(var(--safe-top)+16px)] right-4 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${badgeStyle} backdrop-blur-sm shadow-md`}>
@@ -275,7 +302,7 @@ export default function FullscreenProfile({
                   <div className="flex items-center justify-center md:justify-start gap-2.5 flex-wrap">
                     <h1 className="text-xl font-display font-black text-white tracking-wide flex items-center gap-2">
                       <span>{customDisplayName ? `${customDisplayName} (${data.display_name || data.username})` : title}</span>
-                      {data?.is_online && (
+                      {isUserOnline(data) && (
                         <span className="w-2.5 h-2.5 rounded-full bg-[#20e3a2] animate-pulse shrink-0" />
                       )}
                     </h1>
@@ -291,7 +318,7 @@ export default function FullscreenProfile({
             ) : (
               <h1 className="text-xl font-display font-black text-white tracking-wide flex items-center justify-center md:justify-start gap-2">
                 <span>{title}</span>
-                {isUser && data?.is_online && (
+                {isUser && isUserOnline(data) && (
                   <span className="w-2.5 h-2.5 rounded-full bg-[#20e3a2] animate-pulse shrink-0" />
                 )}
               </h1>
@@ -341,7 +368,7 @@ export default function FullscreenProfile({
           <div className="mt-6 pt-6 border-t border-[#212a38]">
             <h3 className="text-[10px] text-[#5a6478] uppercase font-mono font-black tracking-widest flex items-center gap-1.5 mb-2.5">
               <Info className="w-3.5 h-3.5 text-[#7c5cff]" />
-              <span>Biography & Description</span>
+              <span>{isUser ? 'Bio' : 'Biography & Description'}</span>
             </h3>
             <p className="text-xs text-[#eef1f6] leading-relaxed italic bg-black/30 p-3.5 rounded-2xl border border-[#212a38]/30">
               "{bioText}"
@@ -373,14 +400,6 @@ export default function FullscreenProfile({
 
             {isGroup && data && (
               <>
-                <div className="flex items-center justify-between p-3 rounded-xl bg-white/3 border border-[#212a38]/20 text-[11px]">
-                  <span className="text-[#8d97ab] font-mono font-medium flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5 text-[#8d97ab]" /> Group Founder
-                  </span>
-                  <span className="text-white font-mono font-semibold">
-                    {allProfiles.find(p => p.id === (data as Group).creator_id)?.display_name || 'Admin'}
-                  </span>
-                </div>
                 <div className="flex items-center justify-between p-3 rounded-xl bg-white/3 border border-[#212a38]/20 text-[11px]">
                   <span className="text-[#8d97ab] font-mono font-medium flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5 text-[#8d97ab]" /> Created On
@@ -444,6 +463,7 @@ export default function FullscreenProfile({
               filteredMembers.map((member) => {
                 const seed = member.username?.charCodeAt(0) || 0;
                 const isSelf = member.id === currentUser.id;
+                const isGroupAdmin = isGroup && data && ((data as Group).creator_id === member.id || ((data as Group).admins || []).includes(member.id));
                 
                 return (
                   <div
@@ -474,13 +494,16 @@ export default function FullscreenProfile({
                           getInitials(member.display_name || member.username || 'U')
                         )}
                       </div>
-
+ 
                       {/* Member details */}
                       <div className="min-w-0">
-                        <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <div className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
                           <span className="group-hover/row:text-[#20e3a2] transition-colors truncate">
                             {member.display_name || member.username}
                           </span>
+                          {isGroupAdmin && (
+                            <span className="text-[7.5px] font-mono font-bold bg-[#20e3a2]/10 text-[#20e3a2] border border-[#20e3a2]/20 px-1 py-0.2 rounded">ADMIN</span>
+                          )}
                           {isSelf && (
                             <span className="text-[8px] font-bold text-[#7c5cff] bg-[#7c5cff]/10 border border-[#7c5cff]/15 px-1 py-0.5 rounded font-mono">YOU</span>
                           )}
@@ -494,17 +517,41 @@ export default function FullscreenProfile({
                     {/* Right online status marker */}
                     <div className="flex items-center gap-2 shrink-0">
                       <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider border ${
-                        member.is_online 
+                        isUserOnline(member) 
                           ? 'bg-emerald-500/10 text-[#20e3a2] border-emerald-500/20' 
                           : 'bg-white/5 text-[#8d97ab] border-white/5'
                       }`}>
-                        {member.is_online ? 'online' : 'offline'}
+                        {isUserOnline(member) ? 'online' : 'offline'}
                       </span>
                     </div>
                   </div>
                 );
               })
             )}
+          </div>
+        </div>
+      )}
+
+      {/* FULL SCREEN ZOOMED COVER PHOTO OVERLAY */}
+      {showZoomedCover && coverUrl && (
+        <div className="fixed inset-0 bg-[#030508] z-[100] flex flex-col items-center justify-center animate-fade-in">
+          {/* Back button */}
+          <button
+            onClick={() => setShowZoomedCover(false)}
+            className="absolute top-[calc(var(--safe-top)+20px)] left-6 w-11 h-11 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white hover:text-[#20e3a2] hover:bg-white/15 transition-all cursor-pointer shadow-xl backdrop-blur-md animate-fade-in"
+            title="Back to info"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          
+          {/* Main zoomed cover container */}
+          <div className="w-[90vw] h-[60vw] max-w-[800px] max-h-[500px] rounded-2xl border border-white/10 flex items-center justify-center shadow-2xl relative overflow-hidden bg-[#161d28] animate-zoom-in">
+            <img 
+              src={coverUrl} 
+              alt="Zoomed Cover" 
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+            />
           </div>
         </div>
       )}

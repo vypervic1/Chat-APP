@@ -64,5 +64,8 @@ export interface Group {
   members: string[]; // list of profile IDs
   theme?: ThemeConfig;
   created_at: string;
+  description?: string;
+  cover_url?: string;
+  admins?: string[]; // list of profile IDs who are admins
 }
 
