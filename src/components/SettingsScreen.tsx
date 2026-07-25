@@ -6,6 +6,7 @@ import {
   Trash, 
   LogOut, 
   Edit, 
+  Save,
   Sparkles, 
   Loader2, 
   Bell, 
@@ -24,7 +25,8 @@ import {
   Globe,
   Copy,
   ExternalLink,
-  Camera
+  Camera,
+  X
 } from 'lucide-react';
 import { getAllSavedFiles, deleteSavedFile, SavedFile } from '../utils/indexedDB';
 import { 
@@ -37,6 +39,44 @@ import {
   PushToken 
 } from '../notifications';
 import { parseProfileAbout, buildProfileAbout } from '../utils/customNames';
+import { getMiniRoastMessage } from '../utils/roasts';
+
+function compressImage(file: File, maxWidth: number, maxHeight: number, quality = 0.82): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth || height > maxHeight) {
+          if (width / height > maxWidth / maxHeight) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        } else {
+          resolve(e.target?.result as string);
+        }
+      };
+      img.onerror = () => resolve(e.target?.result as string);
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 interface SettingsScreenProps {
   currentUser: Profile;
@@ -66,6 +106,8 @@ export default function SettingsScreen({
   const [loading, setLoading] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState<'logout' | 'delete' | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [showZoomedCover, setShowZoomedCover] = useState(false);
+  const [lastDarkTheme, setLastDarkTheme] = useState('cosmic');
 
   // Push Notifications Settings States
   const [permission, setPermission] = useState<NotificationPermission>('default');
@@ -82,8 +124,9 @@ export default function SettingsScreen({
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
   const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
-  // Device Storage Tabs state
-  const [activeStorageTab, setActiveStorageTab] = useState<'media' | 'docs' | 'links'>('media');
+  // Device Storage Tabs & Fullscreen state
+  const [activeStorageTab, setActiveStorageTab] = useState<'media' | 'docs' | 'voice' | 'links'>('media');
+  const [fullscreenMedia, setFullscreenMedia] = useState<SavedFile | null>(null);
 
   // Deletion Confirmation States (Strict Requirement: all deletion must ask confirmation for delete or cancel)
   const [fileToDelete, setFileToDelete] = useState<{ id: string; name: string } | null>(null);
@@ -108,8 +151,11 @@ export default function SettingsScreen({
       setPlayingAudioId(null);
     }
     await deleteSavedFile(id);
-    onToast(`Deleted ${name} from local storage`);
+    onToast(getMiniRoastMessage('delete_file', name));
     setFileToDelete(null);
+    if (fullscreenMedia?.id === id) {
+      setFullscreenMedia(null);
+    }
     loadLocalFiles();
   };
 
@@ -274,16 +320,17 @@ export default function SettingsScreen({
   const handleUpdateProfile = async (field: string, value: string) => {
     try {
       const updatedData = { ...currentUser, [field]: value };
+      onUpdateProfile(updatedData);
+      onToast(getMiniRoastMessage(field, value));
+
       const { error } = await supabase
         .from('profiles')
         .update({ [field]: value })
         .eq('id', currentUser.id);
 
-      if (error) throw error;
-      onUpdateProfile(updatedData);
+      if (error) console.warn('Supabase profile update warning:', error);
     } catch (err: any) {
       console.error('Error updating profile:', err);
-      onToast('Failed to update profile field.');
     }
   };
 
@@ -291,67 +338,82 @@ export default function SettingsScreen({
     try {
       const combined = buildProfileAbout(newThinking.trim(), coverUrl, newAbout.trim());
       const updatedData = { ...currentUser, about: combined };
+      onUpdateProfile(updatedData);
+
+      if (newThinking.trim() !== thinking) {
+        onToast(getMiniRoastMessage('thinking', newThinking.trim()));
+      } else {
+        onToast(getMiniRoastMessage('about', newAbout.trim()));
+      }
+
       const { error } = await supabase
         .from('profiles')
         .update({ about: combined })
         .eq('id', currentUser.id);
 
-      if (error) throw error;
-      onUpdateProfile(updatedData);
+      if (error) console.warn('Supabase status update warning:', error);
     } catch (err: any) {
       console.error('Error updating profile status:', err);
-      onToast('Failed to update status.');
     }
   };
 
-  const handleCoverUpload = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleCoverUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = reader.result as string;
+    try {
+      const compressedBase64 = await compressImage(file, 900, 450, 0.82);
+      
+      // Cache locally so it NEVER resets or gets lost
       try {
-        const combined = buildProfileAbout(thinking, base64, about);
-        const { error } = await supabase
-          .from('profiles')
-          .update({ about: combined })
-          .eq('id', currentUser.id);
+        localStorage.setItem(`vyper_cover_${currentUser.id}`, compressedBase64);
+      } catch (err) {}
 
-        if (error) throw error;
-        setCoverUrl(base64);
-        onUpdateProfile({ ...currentUser, about: combined });
-        onToast('Cover photo updated successfully!');
-      } catch (err: any) {
-        console.error('Error saving cover photo:', err);
-        onToast('Failed to save cover photo.');
-      }
-    };
-    reader.readAsDataURL(file);
+      setCoverUrl(compressedBase64);
+      const combined = buildProfileAbout(thinking, compressedBase64, about);
+      const updatedData = { ...currentUser, about: combined };
+      
+      onUpdateProfile(updatedData);
+      onToast(getMiniRoastMessage('cover'));
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ about: combined })
+        .eq('id', currentUser.id);
+
+      if (error) console.warn('Supabase cover photo sync warning:', error);
+    } catch (err: any) {
+      console.error('Error uploading cover photo:', err);
+      onToast('Failed to save cover photo.');
+    }
   };
 
-  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const base64 = reader.result as string;
+    try {
+      const compressedBase64 = await compressImage(file, 400, 400, 0.82);
+      
+      // Cache locally so it NEVER resets or gets lost
       try {
-        const { error } = await supabase
-          .from('profiles')
-          .update({ avatar_url: base64 })
-          .eq('id', currentUser.id);
+        localStorage.setItem(`vyper_avatar_${currentUser.id}`, compressedBase64);
+      } catch (err) {}
 
-        if (error) throw error;
-        onUpdateProfile({ ...currentUser, avatar_url: base64 });
-        onToast('Profile picture updated successfully!');
-      } catch (err: any) {
-        console.error('Error saving avatar:', err);
-        onToast('Failed to save profile picture.');
-      }
-    };
-    reader.readAsDataURL(file);
+      const updatedData = { ...currentUser, avatar_url: compressedBase64 };
+      onUpdateProfile(updatedData);
+      onToast(getMiniRoastMessage('avatar'));
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ avatar_url: compressedBase64 })
+        .eq('id', currentUser.id);
+
+      if (error) console.warn('Supabase avatar photo sync warning:', error);
+    } catch (err: any) {
+      console.error('Error uploading avatar:', err);
+      onToast('Failed to save profile picture.');
+    }
   };
 
   const handleDeleteAccount = async () => {
@@ -403,34 +465,40 @@ export default function SettingsScreen({
       <div className="flex-1 overflow-y-auto px-[22px] py-6 pb-10">
         <div className="flex flex-col items-center mb-[30px] w-full relative">
           {/* Cover Photo Container */}
-          <div className="w-full h-32 rounded-2xl relative overflow-hidden bg-gradient-to-r from-[#7c5cff]/20 to-[#20e3a2]/20 border border-[#212a38]/60 group mb-[-46px] z-0">
+          <div 
+            onClick={() => {
+              if (coverUrl) setShowZoomedCover(true);
+            }}
+            className="w-full h-32 rounded-2xl relative overflow-hidden bg-gradient-to-r from-[#7c5cff]/20 to-[#20e3a2]/20 border border-[#212a38]/60 group mb-[-46px] z-0 cursor-pointer"
+            title={coverUrl ? "Click to Zoom Cover Photo" : "Cover Photo"}
+          >
             {coverUrl ? (
               <img
                 src={coverUrl}
                 alt="Cover"
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                 referrerPolicy="no-referrer"
               />
             ) : null}
             
             {/* Dark overlay on hover */}
-            <div 
-              className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
-              onClick={() => coverInputRef.current?.click()}
-            >
-              <div className="flex items-center gap-1.5 text-xs text-white bg-black/60 px-3 py-1.5 rounded-full border border-white/10 shadow-lg">
-                <Camera className="w-4 h-4 text-[#20e3a2]" />
-                <span className="font-semibold text-[11px]">Change Cover</span>
-              </div>
+            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+              <span className="text-[11px] font-bold text-white bg-black/60 px-3 py-1 rounded-full border border-white/10 backdrop-blur-sm">
+                Tap to Zoom
+              </span>
             </div>
 
-            {/* Persistent edit indicator for easy access */}
+            {/* Top-Right Edit Icon Button to Change Cover */}
             <button
-              onClick={() => coverInputRef.current?.click()}
-              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 border border-white/10 flex items-center justify-center text-white cursor-pointer active:scale-95 transition-transform"
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                coverInputRef.current?.click();
+              }}
+              className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 border border-white/20 flex items-center justify-center text-white cursor-pointer active:scale-95 transition-all z-20 shadow-lg"
               title="Change Cover Photo"
             >
-              <Camera className="w-4 h-4 text-white" />
+              <Edit className="w-4 h-4 text-white" />
             </button>
           </div>
 
@@ -498,7 +566,14 @@ export default function SettingsScreen({
                 onChange={(e) => setDisplayName(e.target.value)}
                 onBlur={() => handleUpdateProfile('display_name', displayName)}
               />
-              <Edit className="w-4 h-4 text-[#5a6478]" />
+              <button
+                type="button"
+                onClick={() => handleUpdateProfile('display_name', displayName)}
+                className="p-1 text-[#20e3a2] hover:scale-110 active:scale-95 transition-all cursor-pointer"
+                title="Save Display Name"
+              >
+                <Save className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
@@ -519,7 +594,14 @@ export default function SettingsScreen({
                 onChange={(e) => setThinking(e.target.value.substring(0, 40))}
                 onBlur={() => handleUpdateAboutAndThinking(thinking, about)}
               />
-              <Edit className="w-4 h-4 text-[#5a6478]" />
+              <button
+                type="button"
+                onClick={() => handleUpdateAboutAndThinking(thinking, about)}
+                className="p-1 text-[#20e3a2] hover:scale-110 active:scale-95 transition-all cursor-pointer"
+                title="Save Status"
+              >
+                <Save className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
@@ -535,121 +617,158 @@ export default function SettingsScreen({
                 onChange={(e) => setAbout(e.target.value)}
                 onBlur={() => handleUpdateAboutAndThinking(thinking, about)}
               />
-              <Edit className="w-4 h-4 text-[#5a6478]" />
+              <button
+                type="button"
+                onClick={() => handleUpdateAboutAndThinking(thinking, about)}
+                className="p-1 text-[#20e3a2] hover:scale-110 active:scale-95 transition-all cursor-pointer"
+                title="Save About"
+              >
+                <Save className="w-4 h-4" />
+              </button>
             </div>
           </div>
         </div>
 
         {/* App Theme Selection Card */}
-        <div className="mt-6 bg-[#161d28]/60 border border-[#212a38] rounded-3xl p-5 space-y-5">
+        <div className="mt-6 bg-[#161d28]/60 border border-[#212a38] rounded-3xl p-5 space-y-4">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-[#7c5cff]/15 text-[#7c5cff]">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
               <h4 className="font-display font-bold text-sm text-white leading-tight">App Theme</h4>
-              <p className="text-[11px] text-[#8d97ab] mt-0.5">Customize your app visual style</p>
+              <p className="text-[11px] text-[#8d97ab] mt-0.5">Customize your visual interface</p>
             </div>
           </div>
 
-          <div className="space-y-4">
-            {/* Dark Themes Category */}
-            <div>
-              <div className="text-[10px] font-bold tracking-[1.2px] text-[#5a6478] uppercase mb-2">Dark Themes</div>
-              <div className="grid grid-cols-2 gap-2.5">
-                {/* Liquid Glass */}
-                <button
-                  onClick={() => onUpdateAppTheme('liquid-glass')}
-                  className={`flex flex-col items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer select-none ${
-                    appTheme === 'liquid-glass'
-                      ? 'border-[#38bdf8] bg-[#10151d]/75 shadow-lg shadow-[#38bdf8]/10'
-                      : 'border-[#212a38] bg-[#10151d] hover:bg-[#161d28]'
-                  }`}
-                >
-                  <div className="flex gap-1.5 mb-2">
-                    <span className="w-3.5 h-3.5 rounded-full bg-[#030509] border border-white/10" />
-                    <span className="w-3.5 h-3.5 rounded-full bg-[#38bdf8]" />
-                    <span className="w-3.5 h-3.5 rounded-full bg-[#818cf8]" />
-                  </div>
-                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">Liquid Glass</span>
-                </button>
+          {/* Dark / Light Mode Toggle */}
+          {(() => {
+            const isLightMode = appTheme.startsWith('light');
+            const currentBaseTheme = appTheme === 'light' ? 'cosmic' : appTheme.replace('light-', '');
 
-                {/* Cosmic */}
-                <button
-                  onClick={() => onUpdateAppTheme('cosmic')}
-                  className={`flex flex-col items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer select-none ${
-                    appTheme === 'cosmic'
-                      ? 'border-[#20e3a2] bg-[#1d2531]'
-                      : 'border-[#212a38] bg-[#10151d] hover:bg-[#161d28]'
-                  }`}
-                >
-                  <div className="flex gap-1.5 mb-2">
-                    <span className="w-3.5 h-3.5 rounded-full bg-[#080b10] border border-white/10" />
-                    <span className="w-3.5 h-3.5 rounded-full bg-[#20e3a2]" />
-                    <span className="w-3.5 h-3.5 rounded-full bg-[#7c5cff]" />
-                  </div>
-                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">Cosmic</span>
-                </button>
+            return (
+              <>
+                <div className="grid grid-cols-2 gap-1.5 p-1 bg-[#10151d] border border-[#212a38] rounded-2xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isLightMode) {
+                        onUpdateAppTheme(currentBaseTheme);
+                      }
+                    }}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold font-mono transition-all flex items-center justify-center gap-2 cursor-pointer select-none ${
+                      !isLightMode
+                        ? 'bg-[#1d2531] text-[#20e3a2] border border-[#20e3a2]/30 shadow-md'
+                        : 'text-[#8d97ab] hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-[#20e3a2]" />
+                    <span>Dark</span>
+                  </button>
 
-                {/* Solar */}
-                <button
-                  onClick={() => onUpdateAppTheme('solar')}
-                  className={`flex flex-col items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer select-none ${
-                    appTheme === 'solar'
-                      ? 'border-[#00e5ff] bg-[#231f3d]'
-                      : 'border-[#212a38] bg-[#10151d] hover:bg-[#161d28]'
-                  }`}
-                >
-                  <div className="flex gap-1.5 mb-2">
-                    <span className="w-3.5 h-3.5 rounded-full bg-[#0b0914] border border-white/10" />
-                    <span className="w-3.5 h-3.5 rounded-full bg-[#00e5ff]" />
-                    <span className="w-3.5 h-3.5 rounded-full bg-[#7c5cff]" />
-                  </div>
-                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">Solar</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isLightMode) {
+                        onUpdateAppTheme(`light-${currentBaseTheme}`);
+                      }
+                    }}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold font-mono transition-all flex items-center justify-center gap-2 cursor-pointer select-none ${
+                      isLightMode
+                        ? 'bg-[#ffffff] text-black border border-white shadow-md'
+                        : 'text-[#8d97ab] hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-indigo-600" />
+                    <span>Light</span>
+                  </button>
+                </div>
 
-                {/* Emerald */}
-                <button
-                  onClick={() => onUpdateAppTheme('emerald')}
-                  className={`flex flex-col items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer select-none ${
-                    appTheme === 'emerald'
-                      ? 'border-[#00ff88] bg-[#151c19]'
-                      : 'border-[#212a38] bg-[#10151d] hover:bg-[#161d28]'
-                  }`}
-                >
-                  <div className="flex gap-1.5 mb-2">
-                    <span className="w-3.5 h-3.5 rounded-full bg-[#040706] border border-white/10" />
-                    <span className="w-3.5 h-3.5 rounded-full bg-[#00ff88]" />
-                    <span className="w-3.5 h-3.5 rounded-full bg-[#20e3a2]" />
-                  </div>
-                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">Emerald</span>
-                </button>
-              </div>
-            </div>
+                {/* 4 Theme Type Cards */}
+                <div className="grid grid-cols-2 gap-2.5 pt-1">
+                  {/* Liquid Glass */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onUpdateAppTheme(isLightMode ? 'light-liquid-glass' : 'liquid-glass');
+                    }}
+                    className={`flex flex-col items-center justify-between p-3.5 rounded-xl border transition-all cursor-pointer select-none ${
+                      currentBaseTheme === 'liquid-glass'
+                        ? 'border-[#38bdf8] bg-[#10151d] shadow-lg shadow-[#38bdf8]/15 ring-1 ring-[#38bdf8]/40'
+                        : 'border-[#212a38] bg-[#10151d] hover:bg-[#161d28]'
+                    }`}
+                  >
+                    <div className="flex gap-1.5 mb-2">
+                      <span className="w-3.5 h-3.5 rounded-full bg-[#030509] border border-white/10" />
+                      <span className="w-3.5 h-3.5 rounded-full bg-[#38bdf8]" />
+                      <span className="w-3.5 h-3.5 rounded-full bg-[#818cf8]" />
+                    </div>
+                    <span className="text-[11px] font-bold text-white uppercase tracking-wider">Liquid Glass</span>
+                  </button>
 
-            {/* Light Themes Category */}
-            <div>
-              <div className="text-[10px] font-bold tracking-[1.2px] text-[#5a6478] uppercase mb-2">Light Themes</div>
-              <div className="grid grid-cols-2 gap-2.5">
-                {/* Pristine Light */}
-                <button
-                  onClick={() => onUpdateAppTheme('light')}
-                  className={`flex flex-col items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer select-none ${
-                    appTheme === 'light'
-                      ? 'border-[#6236ff] bg-[#ffffff]'
-                      : 'border-[#212a38] bg-[#10151d] hover:bg-[#161d28]'
-                  }`}
-                >
-                  <div className="flex gap-1.5 mb-2">
-                    <span className="w-3.5 h-3.5 rounded-full bg-[#f4f6f9] border border-black/10" />
-                    <span className="w-3.5 h-3.5 rounded-full bg-[#10b981]" />
-                    <span className="w-3.5 h-3.5 rounded-full bg-[#6366f1]" />
-                  </div>
-                  <span className="text-[10px] font-bold text-white uppercase tracking-wider">Light</span>
-                </button>
-              </div>
-            </div>
-          </div>
+                  {/* Cosmic */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onUpdateAppTheme(isLightMode ? 'light-cosmic' : 'cosmic');
+                    }}
+                    className={`flex flex-col items-center justify-between p-3.5 rounded-xl border transition-all cursor-pointer select-none ${
+                      currentBaseTheme === 'cosmic'
+                        ? 'border-[#20e3a2] bg-[#10151d] shadow-lg shadow-[#20e3a2]/15 ring-1 ring-[#20e3a2]/40'
+                        : 'border-[#212a38] bg-[#10151d] hover:bg-[#161d28]'
+                    }`}
+                  >
+                    <div className="flex gap-1.5 mb-2">
+                      <span className="w-3.5 h-3.5 rounded-full bg-[#080b10] border border-white/10" />
+                      <span className="w-3.5 h-3.5 rounded-full bg-[#20e3a2]" />
+                      <span className="w-3.5 h-3.5 rounded-full bg-[#7c5cff]" />
+                    </div>
+                    <span className="text-[11px] font-bold text-white uppercase tracking-wider">Cosmic</span>
+                  </button>
+
+                  {/* Solar */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onUpdateAppTheme(isLightMode ? 'light-solar' : 'solar');
+                    }}
+                    className={`flex flex-col items-center justify-between p-3.5 rounded-xl border transition-all cursor-pointer select-none ${
+                      currentBaseTheme === 'solar'
+                        ? 'border-[#00e5ff] bg-[#10151d] shadow-lg shadow-[#00e5ff]/15 ring-1 ring-[#00e5ff]/40'
+                        : 'border-[#212a38] bg-[#10151d] hover:bg-[#161d28]'
+                    }`}
+                  >
+                    <div className="flex gap-1.5 mb-2">
+                      <span className="w-3.5 h-3.5 rounded-full bg-[#0b0914] border border-white/10" />
+                      <span className="w-3.5 h-3.5 rounded-full bg-[#00e5ff]" />
+                      <span className="w-3.5 h-3.5 rounded-full bg-[#7c5cff]" />
+                    </div>
+                    <span className="text-[11px] font-bold text-white uppercase tracking-wider">Solar</span>
+                  </button>
+
+                  {/* Emerald */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onUpdateAppTheme(isLightMode ? 'light-emerald' : 'emerald');
+                    }}
+                    className={`flex flex-col items-center justify-between p-3.5 rounded-xl border transition-all cursor-pointer select-none ${
+                      currentBaseTheme === 'emerald'
+                        ? 'border-[#00ff88] bg-[#10151d] shadow-lg shadow-[#00ff88]/15 ring-1 ring-[#00ff88]/40'
+                        : 'border-[#212a38] bg-[#10151d] hover:bg-[#161d28]'
+                    }`}
+                  >
+                    <div className="flex gap-1.5 mb-2">
+                      <span className="w-3.5 h-3.5 rounded-full bg-[#040706] border border-white/10" />
+                      <span className="w-3.5 h-3.5 rounded-full bg-[#00ff88]" />
+                      <span className="w-3.5 h-3.5 rounded-full bg-[#20e3a2]" />
+                    </div>
+                    <span className="text-[11px] font-bold text-white uppercase tracking-wider">Emerald</span>
+                  </button>
+                </div>
+              </>
+            );
+          })()}
         </div>
 
         {/* ========================================================= */}
@@ -668,11 +787,12 @@ export default function SettingsScreen({
             </div>
           </div>
 
-          {/* Tabs Splitter: Media, Docs, Links */}
-          <div className="flex bg-[#080b10]/80 p-1 rounded-2xl border border-[#212a38]/60">
+          {/* Tabs Splitter: Media, Docs, Voice notes, Links */}
+          <div className="grid grid-cols-4 bg-[#080b10]/80 p-1 rounded-2xl border border-[#212a38]/60 gap-1">
             <button
+              type="button"
               onClick={() => setActiveStorageTab('media')}
-              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer text-center ${
                 activeStorageTab === 'media'
                   ? 'bg-[#7c5cff] text-white shadow-md'
                   : 'text-[#8d97ab] hover:text-white'
@@ -681,8 +801,9 @@ export default function SettingsScreen({
               Media
             </button>
             <button
+              type="button"
               onClick={() => setActiveStorageTab('docs')}
-              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer text-center ${
                 activeStorageTab === 'docs'
                   ? 'bg-[#7c5cff] text-white shadow-md'
                   : 'text-[#8d97ab] hover:text-white'
@@ -691,8 +812,20 @@ export default function SettingsScreen({
               Docs
             </button>
             <button
+              type="button"
+              onClick={() => setActiveStorageTab('voice')}
+              className={`py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer text-center ${
+                activeStorageTab === 'voice'
+                  ? 'bg-[#7c5cff] text-white shadow-md'
+                  : 'text-[#8d97ab] hover:text-white'
+              }`}
+            >
+              Voice notes
+            </button>
+            <button
+              type="button"
               onClick={() => setActiveStorageTab('links')}
-              className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`py-2 rounded-xl text-[11px] font-bold transition-all cursor-pointer text-center ${
                 activeStorageTab === 'links'
                   ? 'bg-[#7c5cff] text-white shadow-md'
                   : 'text-[#8d97ab] hover:text-white'
@@ -705,9 +838,11 @@ export default function SettingsScreen({
           <div className="space-y-3">
             {localFiles.filter(f => {
               if (activeStorageTab === 'media') {
-                return f.fileType !== 'link' && (f.fileType.startsWith('image/') || f.fileType.startsWith('audio/') || f.fileType.startsWith('video/'));
+                return f.fileType !== 'link' && f.fileType !== 'audio/voice-note' && (f.fileType.startsWith('image/') || f.fileType.startsWith('video/'));
               } else if (activeStorageTab === 'docs') {
-                return f.fileType !== 'link' && !f.fileType.startsWith('image/') && !f.fileType.startsWith('audio/') && !f.fileType.startsWith('video/');
+                return f.fileType !== 'link' && f.fileType !== 'audio/voice-note' && !f.fileType.startsWith('image/') && !f.fileType.startsWith('audio/') && !f.fileType.startsWith('video/');
+              } else if (activeStorageTab === 'voice') {
+                return f.fileType === 'audio/voice-note' || (f.fileType.startsWith('audio/') && (f.fileName.toLowerCase().includes('voice') || f.fileName.toLowerCase().includes('audio')));
               } else {
                 return f.fileType === 'link';
               }
@@ -716,50 +851,76 @@ export default function SettingsScreen({
                 {localFiles
                   .filter(f => {
                     if (activeStorageTab === 'media') {
-                      return f.fileType !== 'link' && (f.fileType.startsWith('image/') || f.fileType.startsWith('audio/') || f.fileType.startsWith('video/'));
+                      return f.fileType !== 'link' && f.fileType !== 'audio/voice-note' && (f.fileType.startsWith('image/') || f.fileType.startsWith('video/'));
                     } else if (activeStorageTab === 'docs') {
-                      return f.fileType !== 'link' && !f.fileType.startsWith('image/') && !f.fileType.startsWith('audio/') && !f.fileType.startsWith('video/');
+                      return f.fileType !== 'link' && f.fileType !== 'audio/voice-note' && !f.fileType.startsWith('image/') && !f.fileType.startsWith('audio/') && !f.fileType.startsWith('video/');
+                    } else if (activeStorageTab === 'voice') {
+                      return f.fileType === 'audio/voice-note' || (f.fileType.startsWith('audio/') && (f.fileName.toLowerCase().includes('voice') || f.fileName.toLowerCase().includes('audio')));
                     } else {
                       return f.fileType === 'link';
                     }
                   })
-                  .map((file) => (
-                    <div 
-                      key={file.id}
-                      className="flex items-center justify-between p-3 bg-[#080b10]/60 border border-[#212a38]/60 rounded-2xl gap-3 animate-fade-in"
-                    >
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        {/* Left icon depending on file type */}
-                        <div className="w-9 h-9 rounded-xl bg-[#212a38]/80 flex items-center justify-center shrink-0 overflow-hidden">
-                          {file.fileType === 'link' ? (
-                            <LinkIcon className="w-4 h-4 text-[#20e3a2]" />
-                          ) : file.fileType.startsWith('image/') ? (
-                            <img src={file.fileData} className="w-full h-full object-cover" />
-                          ) : file.fileType.startsWith('audio/') ? (
-                            <button
-                              onClick={() => handlePlayVoiceNote(file)}
-                              className="p-1 rounded-full text-[#20e3a2] hover:bg-[#20e3a2]/15 transition-all cursor-pointer flex items-center justify-center"
-                            >
-                              {playingAudioId === file.id ? (
-                                <Pause className="w-4 h-4 fill-current animate-pulse" />
-                              ) : (
-                                <Play className="w-4 h-4 fill-current ml-0.5" />
-                              )}
-                            </button>
-                          ) : (
-                            <Database className="w-4.5 h-4.5 text-[#8d97ab]" />
-                          )}
-                        </div>
+                  .map((file) => {
+                    const displayTarget = (!file.targetName || file.targetName.toLowerCase() === 'user' || file.targetName === 'Operator')
+                      ? 'Recipient'
+                      : file.targetName;
 
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-bold text-white truncate">
-                            {file.fileName}
-                          </p>
-                          <p className="text-[10px] text-[#5a6478] font-mono mt-0.5 truncate">
-                            {new Date(file.savedAt).toLocaleDateString()} • {file.fileType === 'link' ? 'WEB LINK' : file.fileType.split('/')[1]?.toUpperCase() || 'FILE'}
-                          </p>
+                    const directionLabel = file.direction
+                      ? (file.direction === 'to' ? `To ${displayTarget}` : `From ${displayTarget}`)
+                      : (file.fileType === 'link' ? 'Web Link' : 'Local File');
+
+                    return (
+                      <div 
+                        key={file.id}
+                        onClick={() => {
+                          if (file.fileType.startsWith('image/') || file.fileType.startsWith('video/')) {
+                            setFullscreenMedia(file);
+                          }
+                        }}
+                        className={`flex items-center justify-between p-3 bg-[#080b10]/60 border border-[#212a38]/60 rounded-2xl gap-3 animate-fade-in ${
+                          file.fileType.startsWith('image/') || file.fileType.startsWith('video/') ? 'cursor-pointer hover:border-[#20e3a2]/40' : ''
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          {/* Left icon depending on file type */}
+                          <div className="w-9 h-9 rounded-xl bg-[#212a38]/80 flex items-center justify-center shrink-0 overflow-hidden">
+                            {file.fileType === 'link' ? (
+                              <LinkIcon className="w-4 h-4 text-[#20e3a2]" />
+                            ) : file.fileType.startsWith('image/') ? (
+                              <img src={file.fileData} className="w-full h-full object-cover" />
+                            ) : file.fileType.startsWith('video/') ? (
+                              <div className="relative w-full h-full flex items-center justify-center bg-black/40">
+                                <Play className="w-3.5 h-3.5 text-white fill-current" />
+                              </div>
+                            ) : file.fileType === 'audio/voice-note' || file.fileType.startsWith('audio/') ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handlePlayVoiceNote(file);
+                                }}
+                                className="p-1 rounded-full text-[#20e3a2] hover:bg-[#20e3a2]/15 transition-all cursor-pointer flex items-center justify-center"
+                              >
+                                {playingAudioId === file.id ? (
+                                  <Pause className="w-4 h-4 fill-current animate-pulse" />
+                                ) : (
+                                  <Play className="w-4 h-4 fill-current ml-0.5" />
+                                )}
+                              </button>
+                            ) : (
+                              <Database className="w-4.5 h-4.5 text-[#8d97ab]" />
+                            )}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-bold text-white truncate">
+                              {file.fileName}
+                            </p>
+                            <p className="text-[10.5px] text-[#20e3a2] font-mono mt-0.5 truncate font-medium">
+                              {directionLabel}
+                            </p>
+                          </div>
                         </div>
-                      </div>
 
                       <div className="flex items-center gap-1 shrink-0">
                         {file.fileType === 'link' ? (
@@ -799,7 +960,8 @@ export default function SettingsScreen({
                         </button>
                       </div>
                     </div>
-                  ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="p-5 bg-[#080b10]/30 border border-dashed border-[#212a38] rounded-2xl text-center">
@@ -807,10 +969,12 @@ export default function SettingsScreen({
                 <p className="text-xs text-[#8d97ab] font-medium">No items found in this section</p>
                 <p className="text-[10.5px] text-[#5a6478] mt-1 max-w-[260px] mx-auto leading-normal">
                   {activeStorageTab === 'media'
-                    ? 'All media files, voice records, and call recordings are automatically indexed here.'
+                    ? 'All media files and photos are automatically indexed here.'
                     : activeStorageTab === 'docs'
-                      ? 'Document uploads, texts, and certificates are cached here.'
-                      : 'All hyperlinks parsed from messages are indexed here.'}
+                      ? 'Document uploads, PDFs, and files are cached here.'
+                      : activeStorageTab === 'voice'
+                        ? 'All recorded voice notes sent and received are saved here.'
+                        : 'All hyperlinks parsed from messages are indexed here.'}
                 </p>
               </div>
             )}
@@ -900,6 +1064,96 @@ export default function SettingsScreen({
                 Confirm Delete
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Zoomed Cover Modal Overlay */}
+      {showZoomedCover && coverUrl && (
+        <div 
+          onClick={() => setShowZoomedCover(false)}
+          className="fixed inset-0 bg-black/92 backdrop-blur-md z-[300] flex flex-col items-center justify-center p-4 animate-fade-in cursor-pointer select-none"
+        >
+          <button
+            onClick={() => setShowZoomedCover(false)}
+            className="absolute top-6 right-6 text-white/80 hover:text-white bg-black/60 border border-white/20 p-2.5 rounded-full backdrop-blur-sm cursor-pointer shadow-xl"
+            title="Zoom Out"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          <div className="relative max-w-2xl w-full max-h-[85vh] flex flex-col items-center justify-center">
+            <img 
+              src={coverUrl} 
+              alt="Cover Photo Zoomed" 
+              className="max-w-full max-h-[75vh] object-contain rounded-2xl shadow-2xl border border-white/10 animate-zoom-in"
+              referrerPolicy="no-referrer"
+            />
+            <p className="text-xs text-gray-400 mt-4 font-mono uppercase tracking-wider font-semibold">
+              Tap anywhere to zoom out
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Fullscreen Media Viewer Modal */}
+      {fullscreenMedia && (
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[300] flex flex-col justify-between p-4 animate-fade-in">
+          {/* Header Bar */}
+          <div className="flex items-center justify-between z-10 py-2 border-b border-white/10">
+            <button
+              onClick={() => setFullscreenMedia(null)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs transition-all cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back</span>
+            </button>
+
+            <div className="text-center min-w-0 mx-2">
+              <p className="text-xs font-bold text-white truncate max-w-[180px]">
+                {fullscreenMedia.fileName}
+              </p>
+              <p className="text-[10px] text-[#20e3a2] font-mono">
+                {fullscreenMedia.direction && fullscreenMedia.targetName
+                  ? (fullscreenMedia.direction === 'to' ? `To ${fullscreenMedia.targetName}` : `From ${fullscreenMedia.targetName}`)
+                  : 'Media Preview'}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleDownloadLocalFile(fullscreenMedia)}
+                className="p-2 rounded-xl bg-[#20e3a2]/20 hover:bg-[#20e3a2]/30 text-[#20e3a2] transition-all cursor-pointer"
+                title="Download"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setFileToDelete({ id: fullscreenMedia.id, name: fullscreenMedia.fileName })}
+                className="p-2 rounded-xl bg-[#ff5470]/20 hover:bg-[#ff5470]/30 text-[#ff5470] transition-all cursor-pointer"
+                title="Delete"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Media Center */}
+          <div className="flex-1 flex items-center justify-center p-2 min-h-0 overflow-hidden">
+            {fullscreenMedia.fileType.startsWith('video/') ? (
+              <video
+                src={fullscreenMedia.fileData}
+                controls
+                autoPlay
+                className="max-w-full max-h-[75vh] rounded-2xl shadow-2xl object-contain border border-white/10"
+              />
+            ) : (
+              <img
+                src={fullscreenMedia.fileData}
+                alt={fullscreenMedia.fileName}
+                className="max-w-full max-h-[75vh] rounded-2xl shadow-2xl object-contain border border-white/10"
+              />
+            )}
           </div>
         </div>
       )}

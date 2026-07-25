@@ -233,9 +233,9 @@ export default function FullscreenProfile({
       </div>
 
       {/* LEFT COLUMN: Main profile details card */}
-      <div className={`w-full ${isUser ? 'max-w-xl mx-auto border-x border-[#212a38]' : 'md:w-[420px] shrink-0 border-b md:border-b-0 md:border-r border-[#212a38]'} flex flex-col relative overflow-y-auto pb-8`}>
+      <div className={`w-full ${isUser ? 'max-w-xl mx-auto border-x border-[#212a38]' : 'md:w-[360px] shrink-0 border-b md:border-b-0 md:border-r border-[#212a38]'} flex flex-col relative overflow-y-auto`}>
         {/* Profile Header Image/Gradient Background */}
-        <div className="h-44 relative flex items-end justify-center overflow-hidden bg-gradient-to-r from-[#7c5cff]/20 to-[#20e3a2]/20">
+        <div className={`${isGroup ? 'h-32' : 'h-40'} relative flex items-end justify-center overflow-hidden bg-gradient-to-r from-[#7c5cff]/20 to-[#20e3a2]/20`}>
           {coverUrl ? (
             <img
               src={coverUrl}
@@ -248,18 +248,18 @@ export default function FullscreenProfile({
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#080b10]/40 to-[#080b10]" />
           
           {/* Badge at top right */}
-          <span className={`absolute top-[calc(var(--safe-top)+16px)] right-4 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${badgeStyle} backdrop-blur-sm shadow-md`}>
+          <span className={`absolute top-[calc(var(--safe-top)+12px)] right-4 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${badgeStyle} backdrop-blur-sm shadow-md`}>
             {badgeText}
           </span>
         </div>
 
         {/* Profile Content Container */}
-        <div className="px-6 relative -mt-14 flex-1">
+        <div className="px-5 relative -mt-10 pb-4">
           {/* Profile Big Avatar (Tapping here opens full screen) */}
-          <div className="flex justify-center md:justify-start mb-4">
+          <div className="flex justify-center md:justify-start mb-2">
             <div 
               onClick={() => setShowZoomedAvatar(true)}
-              className="w-24 h-24 rounded-full border-4 border-[#080b10] flex items-center justify-center text-white text-3xl font-black shadow-2xl relative overflow-hidden bg-[#161d28] cursor-pointer hover:scale-105 active:scale-95 transition-transform"
+              className={`${isGroup ? 'w-16 h-16 text-2xl' : 'w-20 h-20 text-3xl'} rounded-full border-4 border-[#080b10] flex items-center justify-center text-white font-black shadow-2xl relative overflow-hidden bg-[#161d28] cursor-pointer hover:scale-105 active:scale-95 transition-transform`}
               style={bgStyle}
               title="View in Full Screen"
             >
@@ -299,16 +299,16 @@ export default function FullscreenProfile({
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center md:justify-start gap-2.5 flex-wrap">
-                    <h1 className="text-xl font-display font-black text-white tracking-wide flex items-center gap-2">
+                  <div className="flex items-center justify-center md:justify-start gap-2 flex-wrap">
+                    <h1 className="text-lg font-display font-black text-white tracking-wide flex items-center gap-2">
                       <span>{customDisplayName ? `${customDisplayName} (${data.display_name || data.username})` : title}</span>
                       {isUserOnline(data) && (
-                        <span className="w-2.5 h-2.5 rounded-full bg-[#20e3a2] animate-pulse shrink-0" />
+                        <span className="w-2 h-2 rounded-full bg-[#20e3a2] animate-pulse shrink-0" />
                       )}
                     </h1>
                     <button
                       onClick={() => setIsEditingDisplayName(true)}
-                      className="text-[10px] bg-[#161d28] hover:bg-[#1d2531] border border-[#212a38] text-[#20e3a2] font-semibold px-2 py-0.5 rounded-md cursor-pointer transition-colors"
+                      className="text-[9px] bg-[#161d28] hover:bg-[#1d2531] border border-[#212a38] text-[#20e3a2] font-semibold px-2 py-0.5 rounded-md cursor-pointer transition-colors"
                     >
                       Edit Name
                     </button>
@@ -316,27 +316,27 @@ export default function FullscreenProfile({
                 )}
               </div>
             ) : (
-              <h1 className="text-xl font-display font-black text-white tracking-wide flex items-center justify-center md:justify-start gap-2">
+              <h1 className="text-lg font-display font-black text-white tracking-wide flex items-center justify-center md:justify-start gap-2">
                 <span>{title}</span>
                 {isUser && isUserOnline(data) && (
-                  <span className="w-2.5 h-2.5 rounded-full bg-[#20e3a2] animate-pulse shrink-0" />
+                  <span className="w-2 h-2 rounded-full bg-[#20e3a2] animate-pulse shrink-0" />
                 )}
               </h1>
             )}
-            <p className="text-xs text-[#8d97ab] font-mono mt-1">
+            <p className="text-[11px] text-[#8d97ab] font-mono mt-0.5">
               {subTitle}
             </p>
           </div>
 
           {/* Action buttons for platform users */}
           {isUser && data && data.id !== currentUser.id && (
-            <div className="flex items-center gap-2.5 mt-5">
+            <div className="flex items-center gap-2.5 mt-4">
               {onStartDM && (
                 <button
                   onClick={() => {
                     onStartDM(data as Profile);
                   }}
-                  className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#6849eb] hover:shadow-lg hover:shadow-[#7c5cff]/10 text-white font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#7c5cff] to-[#6849eb] hover:shadow-lg hover:shadow-[#7c5cff]/10 text-white font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
                 >
                   <MessageSquare className="w-4 h-4" />
                   <span>Start Chat</span>
@@ -347,14 +347,14 @@ export default function FullscreenProfile({
                 <>
                   <button
                     onClick={() => onCall('voice', (data as Profile).id)}
-                    className="w-11 h-11 rounded-xl bg-white/5 border border-white/10 hover:border-[#20e3a2]/30 hover:bg-[#20e3a2]/5 flex items-center justify-center text-[#20e3a2] transition-colors cursor-pointer"
+                    className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 hover:border-[#20e3a2]/30 hover:bg-[#20e3a2]/5 flex items-center justify-center text-[#20e3a2] transition-colors cursor-pointer"
                     title="Start Voice Call"
                   >
                     <Phone className="w-4 h-4 fill-current" />
                   </button>
                   <button
                     onClick={() => onCall('video', (data as Profile).id)}
-                    className="w-11 h-11 rounded-xl bg-white/5 border border-white/10 hover:border-[#7c5cff]/30 hover:bg-[#7c5cff]/5 flex items-center justify-center text-[#7c5cff] transition-colors cursor-pointer"
+                    className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 hover:border-[#7c5cff]/30 hover:bg-[#7c5cff]/5 flex items-center justify-center text-[#7c5cff] transition-colors cursor-pointer"
                     title="Start Video Call"
                   >
                     <Video className="w-4 h-4" />
@@ -365,29 +365,29 @@ export default function FullscreenProfile({
           )}
 
           {/* Biography Detail */}
-          <div className="mt-6 pt-6 border-t border-[#212a38]">
-            <h3 className="text-[10px] text-[#5a6478] uppercase font-mono font-black tracking-widest flex items-center gap-1.5 mb-2.5">
-              <Info className="w-3.5 h-3.5 text-[#7c5cff]" />
+          <div className="mt-4 pt-3 border-t border-[#212a38]">
+            <h3 className="text-[9.5px] text-[#5a6478] uppercase font-mono font-black tracking-widest flex items-center gap-1.5 mb-1.5">
+              <Info className="w-3 h-3 text-[#7c5cff]" />
               <span>{isUser ? 'Bio' : 'Biography & Description'}</span>
             </h3>
-            <p className="text-xs text-[#eef1f6] leading-relaxed italic bg-black/30 p-3.5 rounded-2xl border border-[#212a38]/30">
+            <p className="text-[11.5px] text-[#eef1f6] leading-snug italic bg-black/30 p-2.5 rounded-xl border border-[#212a38]/30">
               "{bioText}"
             </p>
           </div>
 
           {/* Details Fields */}
-          <div className="mt-5 space-y-2.5">
+          <div className="mt-3 space-y-1.5">
             {isUser && data && (
               <>
-                <div className="flex items-center justify-between p-3 rounded-xl bg-white/3 border border-[#212a38]/20 text-[11px]">
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/3 border border-[#212a38]/20 text-[10.5px]">
                   <span className="text-[#8d97ab] font-mono font-medium flex items-center gap-1.5">
                     <Mail className="w-3.5 h-3.5 text-[#8d97ab]" /> Email Address
                   </span>
-                  <span className="text-white font-mono font-semibold truncate max-w-[200px]" title={(data as Profile).email}>
+                  <span className="text-white font-mono font-semibold truncate max-w-[180px]" title={(data as Profile).email}>
                     {(data as Profile).email}
                   </span>
                 </div>
-                <div className="flex items-center justify-between p-3 rounded-xl bg-white/3 border border-[#212a38]/20 text-[11px]">
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/3 border border-[#212a38]/20 text-[10.5px]">
                   <span className="text-[#8d97ab] font-mono font-medium flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5 text-[#8d97ab]" /> Joined On
                   </span>
@@ -400,7 +400,7 @@ export default function FullscreenProfile({
 
             {isGroup && data && (
               <>
-                <div className="flex items-center justify-between p-3 rounded-xl bg-white/3 border border-[#212a38]/20 text-[11px]">
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/3 border border-[#212a38]/20 text-[10.5px]">
                   <span className="text-[#8d97ab] font-mono font-medium flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5 text-[#8d97ab]" /> Created On
                   </span>
@@ -453,9 +453,9 @@ export default function FullscreenProfile({
           </div>
 
           {/* Scrollable Members List */}
-          <div className="flex-1 overflow-y-auto pr-1 space-y-1.5">
+          <div className="flex-1 overflow-y-auto pr-1 space-y-1">
             {filteredMembers.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center animate-fade-in">
+              <div className="flex flex-col items-center justify-center py-10 text-center animate-fade-in">
                 <span className="text-xs text-gray-400 font-bold uppercase tracking-wider font-mono">No matching operators found</span>
                 <p className="text-[10.5px] text-gray-500 mt-1 max-w-[200px]">Ensure spelling matches the user's username or ID</p>
               </div>
@@ -469,16 +469,16 @@ export default function FullscreenProfile({
                   <div
                     key={member.id}
                     onClick={() => handleMemberClick(member)}
-                    className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all text-left group/row ${
+                    className={`w-full flex items-center justify-between py-2 px-3 rounded-xl border transition-all text-left group/row ${
                       isSelf 
                         ? 'bg-[#161d28]/10 border-[#212a38]/10 cursor-default' 
                         : 'bg-[#161d28]/30 hover:bg-[#161d28]/80 border-[#212a38]/20 hover:border-[#212a38]/60 cursor-pointer'
                     }`}
                   >
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-center gap-2.5 min-w-0">
                       {/* Member Avatar */}
                       <div 
-                        className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[11px] font-black shadow-md shrink-0 relative overflow-hidden"
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[10px] font-black shadow-md shrink-0 relative overflow-hidden"
                         style={{
                           background: member.avatar_url ? 'none' : getAvatarStyle(seed),
                         }}
@@ -502,13 +502,13 @@ export default function FullscreenProfile({
                             {member.display_name || member.username}
                           </span>
                           {isGroupAdmin && (
-                            <span className="text-[7.5px] font-mono font-bold bg-[#20e3a2]/10 text-[#20e3a2] border border-[#20e3a2]/20 px-1 py-0.2 rounded">ADMIN</span>
+                            <span className="text-[7px] font-mono font-bold bg-[#20e3a2]/10 text-[#20e3a2] border border-[#20e3a2]/20 px-1 py-0.2 rounded">ADMIN</span>
                           )}
                           {isSelf && (
-                            <span className="text-[8px] font-bold text-[#7c5cff] bg-[#7c5cff]/10 border border-[#7c5cff]/15 px-1 py-0.5 rounded font-mono">YOU</span>
+                            <span className="text-[7.5px] font-bold text-[#7c5cff] bg-[#7c5cff]/10 border border-[#7c5cff]/15 px-1 py-0.5 rounded font-mono">YOU</span>
                           )}
                         </div>
-                        <p className="text-[9.5px] text-[#8d97ab] font-mono mt-0.5 truncate">
+                        <p className="text-[9px] text-[#8d97ab] font-mono leading-none mt-0.5 truncate">
                           @{member.username}
                         </p>
                       </div>
@@ -534,18 +534,24 @@ export default function FullscreenProfile({
 
       {/* FULL SCREEN ZOOMED COVER PHOTO OVERLAY */}
       {showZoomedCover && coverUrl && (
-        <div className="fixed inset-0 bg-[#030508] z-[100] flex flex-col items-center justify-center animate-fade-in">
+        <div 
+          onClick={() => setShowZoomedCover(false)}
+          className="fixed inset-0 bg-[#030508]/95 z-[100] flex flex-col items-center justify-center animate-fade-in cursor-pointer p-4 select-none"
+        >
           {/* Back button */}
           <button
-            onClick={() => setShowZoomedCover(false)}
+            onClick={(e) => { e.stopPropagation(); setShowZoomedCover(false); }}
             className="absolute top-[calc(var(--safe-top)+20px)] left-6 w-11 h-11 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white hover:text-[#20e3a2] hover:bg-white/15 transition-all cursor-pointer shadow-xl backdrop-blur-md animate-fade-in"
-            title="Back to info"
+            title="Close Zoom"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           
           {/* Main zoomed cover container */}
-          <div className="w-[90vw] h-[60vw] max-w-[800px] max-h-[500px] rounded-2xl border border-white/10 flex items-center justify-center shadow-2xl relative overflow-hidden bg-[#161d28] animate-zoom-in">
+          <div 
+            onClick={() => setShowZoomedCover(false)}
+            className="w-[92vw] h-[60vw] max-w-[840px] max-h-[520px] rounded-2xl border border-white/20 flex items-center justify-center shadow-2xl relative overflow-hidden bg-[#161d28] animate-zoom-in cursor-pointer"
+          >
             <img 
               src={coverUrl} 
               alt="Zoomed Cover" 
@@ -553,24 +559,29 @@ export default function FullscreenProfile({
               referrerPolicy="no-referrer"
             />
           </div>
+          <p className="text-[11px] text-gray-400 mt-4 font-mono uppercase tracking-wider font-semibold">Tap anywhere to zoom out</p>
         </div>
       )}
 
       {/* FULL SCREEN ZOOMED PROFILE AVATAR PORTRAIT OVERLAY */}
       {showZoomedAvatar && (
-        <div className="fixed inset-0 bg-[#030508] z-[100] flex flex-col items-center justify-center animate-fade-in">
+        <div 
+          onClick={() => setShowZoomedAvatar(false)}
+          className="fixed inset-0 bg-[#030508]/95 z-[100] flex flex-col items-center justify-center animate-fade-in cursor-pointer p-4 select-none"
+        >
           {/* Back button */}
           <button
-            onClick={() => setShowZoomedAvatar(false)}
+            onClick={(e) => { e.stopPropagation(); setShowZoomedAvatar(false); }}
             className="absolute top-[calc(var(--safe-top)+20px)] left-6 w-11 h-11 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white hover:text-[#20e3a2] hover:bg-white/15 transition-all cursor-pointer shadow-xl backdrop-blur-md animate-fade-in"
-            title="Back to info"
+            title="Close Zoom"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           
           {/* Main zoomed avatar container */}
           <div 
-            className="w-[85vw] h-[85vw] max-w-[460px] max-h-[460px] rounded-full border-2 border-white/10 flex items-center justify-center text-white text-8xl font-black shadow-[0_0_80px_rgba(32,227,162,0.18)] relative overflow-hidden bg-[#161d28] animate-zoom-in" 
+            onClick={() => setShowZoomedAvatar(false)}
+            className="w-[85vw] h-[85vw] max-w-[460px] max-h-[460px] rounded-full border-2 border-white/20 flex items-center justify-center text-white text-8xl font-black shadow-[0_0_80px_rgba(32,227,162,0.18)] relative overflow-hidden bg-[#161d28] animate-zoom-in cursor-pointer" 
             style={bgStyle}
           >
             {data?.avatar_url || (isGroup && data?.icon && (data.icon.startsWith('data:image/') || data.icon.startsWith('http'))) ? (
@@ -594,6 +605,7 @@ export default function FullscreenProfile({
               getInitials(title)
             )}
           </div>
+          <p className="text-[11px] text-gray-400 mt-4 font-mono uppercase tracking-wider font-semibold">Tap anywhere to zoom out</p>
         </div>
       )}
     </div>

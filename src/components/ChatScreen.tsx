@@ -127,17 +127,20 @@ export default function ChatScreen({
     }
   }, [chatId, currentUser.id]);
 
-  // Persist draft to memory when typed text changes
+  // Persist draft to memory when typed text changes with debouncing for fast input
   useEffect(() => {
-    try {
-      if (text) {
-        localStorage.setItem(`vyper_draft_${currentUser.id}_${chatId}`, text);
-      } else {
-        localStorage.removeItem(`vyper_draft_${currentUser.id}_${chatId}`);
+    const timer = setTimeout(() => {
+      try {
+        if (text) {
+          localStorage.setItem(`vyper_draft_${currentUser.id}_${chatId}`, text);
+        } else {
+          localStorage.removeItem(`vyper_draft_${currentUser.id}_${chatId}`);
+        }
+      } catch (e) {
+        // Ignore
       }
-    } catch (e) {
-      // Ignore
-    }
+    }, 400);
+    return () => clearTimeout(timer);
   }, [text, chatId, currentUser.id]);
 
   const [replyTo, setReplyTo] = useState<Message | null>(null);
@@ -1328,12 +1331,12 @@ export default function ChatScreen({
 
               {/* Thinking Speech Bubble representation as requested */}
               {thinkingText && (
-                <div className="absolute top-[38px] left-0 z-30 animate-pulse">
-                  <div className="relative bg-[#1d2733] border border-[#2c3848] text-[#eef1f6] text-[10px] px-2.5 py-1 rounded-xl shadow-xl whitespace-nowrap max-w-[220px] truncate flex items-center gap-1">
-                    <span className="shrink-0 text-xs">💭</span>
-                    <span className="font-semibold">{thinkingText}</span>
+                <div className="absolute top-[38px] left-0 z-30 animate-fade-in pointer-events-none">
+                  <div className="relative bg-[#1d2733] border border-[#20e3a2]/40 text-[#eef1f6] text-[10px] px-2.5 py-1 rounded-xl shadow-xl max-w-[280px] sm:max-w-[340px] flex items-center gap-1 font-sans">
+                    <span className="shrink-0 text-[11px]">💭</span>
+                    <span className="font-semibold text-white break-words leading-tight block">{thinkingText}</span>
                     {/* Bubble arrow pointing straight up to the avatar */}
-                    <div className="absolute -top-[4px] left-3.5 w-2 h-2 bg-[#1d2733] border-l border-t border-[#2c3848] rotate-45" />
+                    <div className="absolute -top-[4px] left-3.5 w-2 h-2 bg-[#1d2733] border-l border-t border-[#20e3a2]/40 rotate-45" />
                   </div>
                 </div>
               )}
@@ -1824,6 +1827,20 @@ export default function ChatScreen({
                         } catch (e) {
                           // Fallback if parsing fails
                         }
+                      }
+                      
+                      if (msg.text.startsWith('[Forwarded]: ')) {
+                        const cleanContent = msg.text.substring('[Forwarded]: '.length);
+                        return (
+                          <div className="flex flex-col text-left">
+                            <div className="flex items-center justify-end gap-1 mb-1">
+                              <span className="text-[10px] italic text-white/50 flex items-center gap-0.5 font-sans">
+                                <Forward className="w-2.5 h-2.5 opacity-60" /> Forwarded
+                              </span>
+                            </div>
+                            <p className="leading-relaxed break-words whitespace-pre-wrap text-left text-xs text-[#eef1f6]">{cleanContent}</p>
+                          </div>
+                        );
                       }
                       
                       return <p className="leading-relaxed break-words whitespace-pre-wrap text-left">{msg.text}</p>;
@@ -3625,7 +3642,7 @@ export default function ChatScreen({
 
       {/* Group Profile / Manage Members drawer (Requirement 3.1) */}
       {showGroupProfile && currentGroup && (
-        <div className="absolute inset-0 bg-[#080b10] z-40 flex flex-col p-5 md:p-6 animate-fade-in">
+        <div className="absolute inset-0 bg-[#080b10] z-40 flex flex-col p-4 md:p-5 animate-fade-in overflow-y-auto">
           {/* Header */}
           <div className="flex items-center gap-3 border-b border-[#212a38] pb-4 mb-4 shrink-0">
             <button
@@ -3642,7 +3659,7 @@ export default function ChatScreen({
 
           {/* Group Info Block */}
           <div className="shrink-0 border-b border-[#212a38] pb-4 mb-4">
-            {currentGroup.creator_id === currentUser.id ? (
+            {isCurrentUserAdmin ? (
               // Editable mode for group admin (Requirement 6)
               <div className="space-y-4">
                 {/* Group Cover Photo Editable Area */}
@@ -3842,9 +3859,9 @@ export default function ChatScreen({
           {/* Members list & add members container */}
           <div className="flex-1 flex flex-col min-h-0 space-y-4">
             {/* Section 1: Members list */}
-            <div className="flex-1 overflow-y-auto pr-1">
+            <div className="flex-1 overflow-y-auto min-h-[250px] pr-1">
               <h4 className="text-[10.5px] font-bold text-[#5a6478] uppercase tracking-wider mb-2 px-1 font-mono">Active Members ({currentGroup.members?.length || 0})</h4>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {sortedGroupMembers.map((memId) => {
                   const memProfile = allProfiles.find(p => p.id === memId);
                   if (!memProfile) return null;
@@ -4418,106 +4435,140 @@ export default function ChatScreen({
         </div>
       )}
 
-      {/* Message Long-press blur & focus options menu */}
+      {/* Message Long-press blur & focus options menu (iOS WhatsApp Style) */}
       {longPressedMsg && (
         <div 
-          className="fixed inset-0 z-[100] backdrop-blur-xl bg-[#030509]/80 flex flex-col items-center justify-center p-4 animate-fade-in"
+          className="fixed inset-0 z-[100] backdrop-blur-2xl bg-black/75 flex flex-col items-center justify-center p-4 animate-fade-in select-none"
           onClick={() => setLongPressedMsg(null)}
         >
-          {/* Main container wrapper */}
           <div 
-            className="w-full max-w-md bg-[#10151d]/90 border border-[#212a38] rounded-3xl p-5 shadow-2xl relative flex flex-col gap-4 backdrop-blur-md"
+            className="w-full max-w-[320px] flex flex-col items-center gap-3 relative"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header: Highlight Title */}
-            <div className="flex items-center justify-between border-b border-[#212a38] pb-3 mb-1">
-              <div>
-                <span className="text-[10px] text-[#20e3a2] font-mono font-bold tracking-wider uppercase">Message Options</span>
-                <h4 className="font-display font-black text-xs text-white">
-                  {longPressedMsg.sender_id === currentUser.id 
-                    ? 'Sent by You' 
-                    : `Received from ${getContactDisplayName(allProfiles.find(p => p.id === longPressedMsg.sender_id))}`
-                  }
-                </h4>
-              </div>
-              <button 
-                onClick={() => setLongPressedMsg(null)}
-                className="w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-[#8d97ab] hover:text-white cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Render Scrollable Emojis row */}
-            <div className="bg-black/35 rounded-2xl p-2.5 border border-[#212a38]/60 flex items-center gap-1.5 overflow-x-auto scrollbar-none">
-              {unifiedEmojis.map((emoji) => (
+            {/* Quick Reactions Pill (Floating at top) */}
+            <div className="bg-white/95 dark:bg-[#1f2633]/95 border border-white/20 shadow-[0_10px_35px_rgba(0,0,0,0.6)] rounded-full px-4 py-2 flex items-center justify-between w-full backdrop-blur-xl">
+              {['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emoji) => (
                 <button
                   key={emoji}
                   onClick={() => {
                     onToggleReaction(longPressedMsg.id, emoji);
                     setLongPressedMsg(null);
                   }}
-                  className="text-2xl hover:scale-125 active:scale-110 transition-transform duration-150 p-1 shrink-0 cursor-pointer"
+                  className="text-2xl hover:scale-125 active:scale-110 transition-transform duration-150 p-1 cursor-pointer"
                 >
                   {emoji}
                 </button>
               ))}
-              <div className="w-[1px] h-6 bg-[#212a38] shrink-0 mx-1" />
               <button
                 onClick={() => {
                   const newEmoji = prompt("Enter an emoji to add:");
-                  if (newEmoji) {
-                    const emojiClean = newEmoji.trim();
-                    if (emojiClean) {
-                      setUnifiedEmojis((prev) => {
-                        const next = [...prev.slice(0, 9), emojiClean];
-                        localStorage.setItem('vyper_unified_reaction_emojis_v2', JSON.stringify(next));
-                        return next;
-                      });
-                    }
+                  if (newEmoji && newEmoji.trim()) {
+                    onToggleReaction(longPressedMsg.id, newEmoji.trim());
+                    setLongPressedMsg(null);
                   }
                 }}
-                className="w-8 h-8 rounded-xl bg-[#20e3a2]/10 hover:bg-[#20e3a2]/20 border border-[#20e3a2]/30 flex items-center justify-center text-[#20e3a2] text-lg font-black shrink-0 cursor-pointer transition-colors"
-                title="Add Custom Emoji"
+                className="w-7 h-7 rounded-full bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 flex items-center justify-center text-gray-700 dark:text-white text-sm font-bold cursor-pointer transition-colors"
+                title="More Emojis"
               >
                 ＋
               </button>
             </div>
 
-            {/* Highlighted message text bubble content */}
-            <div className="p-4 rounded-2xl bg-white/5 border border-white/10 text-white relative">
+            {/* Highlighted Message Bubble Preview Card */}
+            <div className={`w-full p-3.5 rounded-2xl shadow-2xl border border-white/15 relative text-left transition-all ${
+              longPressedMsg.sender_id === currentUser.id 
+                ? 'bg-[#005c4b] text-white rounded-br-none' 
+                : 'bg-[#202c33] text-white rounded-bl-none'
+            }`}>
               {longPressedMsg.is_voice ? (
                 <div className="flex items-center gap-2">
                   <Mic className="w-4 h-4 text-[#20e3a2]" />
-                  <span className="text-xs font-mono">🎤 Voice Note</span>
+                  <span className="text-xs font-semibold">🎤 Voice Note</span>
                 </div>
               ) : longPressedMsg.file_name ? (
                 <div className="flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-[#7c5cff]" />
+                  <FileText className="w-4 h-4 text-[#20e3a2]" />
                   <span className="text-xs font-semibold truncate">{longPressedMsg.file_name}</span>
                 </div>
+              ) : longPressedMsg.text?.startsWith('_vyper_call_::') ? (() => {
+                try {
+                  const callMeta = JSON.parse(longPressedMsg.text.substring('_vyper_call_::'.length));
+                  const isVoice = callMeta.type === 'voice';
+                  return (
+                    <div className="flex items-center gap-2 py-0.5">
+                      <Phone className="w-4 h-4 text-[#20e3a2]" />
+                      <span className="text-xs font-bold">
+                        {isVoice ? '📞 Voice Call (Ended)' : '📹 Video Call (Ended)'}
+                      </span>
+                    </div>
+                  );
+                } catch {
+                  return <p className="text-xs font-bold">📞 Call Message</p>;
+                }
+              })() : longPressedMsg.text?.startsWith('_vyper_reply_::') ? (() => {
+                try {
+                  const meta = JSON.parse(longPressedMsg.text.substring('_vyper_reply_::'.length));
+                  return (
+                    <div className="flex flex-col gap-1">
+                      <div className="border-l-2 border-[#20e3a2] bg-black/20 px-2 py-1 rounded-r-lg text-[10px] text-white/80">
+                        <span className="font-bold text-[#20e3a2] block">{meta.reply_to_name}</span>
+                        <span className="truncate block">{meta.reply_to_text}</span>
+                      </div>
+                      <p className="text-xs font-medium leading-relaxed mt-0.5">{meta.text}</p>
+                    </div>
+                  );
+                } catch {
+                  return <p className="text-xs font-medium">{longPressedMsg.text}</p>;
+                }
+              })() : longPressedMsg.text?.startsWith('[Forwarded]: ') ? (
+                <div className="flex flex-col text-left">
+                  <div className="flex items-center justify-end mb-0.5">
+                    <span className="text-[9.5px] italic text-white/60 flex items-center gap-0.5">
+                      <Forward className="w-2.5 h-2.5" /> Forwarded
+                    </span>
+                  </div>
+                  <p className="text-xs font-medium leading-relaxed">
+                    {longPressedMsg.text.substring('[Forwarded]: '.length)}
+                  </p>
+                </div>
               ) : (
-                <p className="text-sm break-words whitespace-pre-wrap leading-relaxed">{longPressedMsg.text}</p>
+                <p className="text-xs font-medium break-words whitespace-pre-wrap leading-relaxed">{longPressedMsg.text}</p>
               )}
-              <div className="text-[9px] text-[#8d97ab] font-mono mt-2 text-right">
-                {new Date(longPressedMsg.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+
+              <div className="flex items-center justify-end gap-1 mt-1.5 text-[9px] text-white/60 font-mono">
+                <span>{new Date(longPressedMsg.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+                {longPressedMsg.sender_id === currentUser.id && (
+                  <CheckCheck className="w-3 h-3 text-[#20e3a2]" />
+                )}
               </div>
             </div>
 
-            {/* Dropdown Menu stack */}
-            <div className="flex flex-col gap-1.5">
-              {/* Star / Unstar Option */}
+            {/* iOS WhatsApp Action Sheet Menu Card */}
+            <div className="w-full bg-[#1c2331]/95 border border-white/15 rounded-2xl shadow-2xl overflow-hidden divide-y divide-white/10 text-white flex flex-col backdrop-blur-2xl">
+              {/* Star Option */}
               <button
                 onClick={() => {
                   handleToggleStar(longPressedMsg.id);
                   setLongPressedMsg(null);
                 }}
-                className="w-full flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 transition-all cursor-pointer text-left group"
+                className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-white/10 transition-colors cursor-pointer text-left group"
               >
-                <span className="text-xs font-bold text-white group-hover:text-amber-400 transition-colors">
-                  {starredMsgIds.includes(longPressedMsg.id) ? 'Unstar Message' : 'Star Message'}
+                <span className="text-xs font-semibold text-white">
+                  {starredMsgIds.includes(longPressedMsg.id) ? 'Unstar' : 'Star'}
                 </span>
-                <Star className={`w-4 h-4 ${starredMsgIds.includes(longPressedMsg.id) ? 'text-amber-400 fill-current' : 'text-[#8d97ab]'}`} />
+                <Star className={`w-4 h-4 ${starredMsgIds.includes(longPressedMsg.id) ? 'text-amber-400 fill-current' : 'text-[#8d97ab] group-hover:text-amber-400'}`} />
+              </button>
+
+              {/* Reply Option */}
+              <button
+                onClick={() => {
+                  setReplyTo(longPressedMsg);
+                  setLongPressedMsg(null);
+                }}
+                className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-white/10 transition-colors cursor-pointer text-left group"
+              >
+                <span className="text-xs font-semibold text-white">Reply</span>
+                <CornerUpLeft className="w-4 h-4 text-[#8d97ab] group-hover:text-[#20e3a2]" />
               </button>
 
               {/* Forward Option */}
@@ -4526,52 +4577,70 @@ export default function ChatScreen({
                   setMsgToForward(longPressedMsg);
                   setLongPressedMsg(null);
                 }}
-                className="w-full flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 transition-all cursor-pointer text-left group"
+                className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-white/10 transition-colors cursor-pointer text-left group"
               >
-                <span className="text-xs font-bold text-white group-hover:text-[#20e3a2] transition-colors">Forward Message</span>
-                <Forward className="w-4 h-4 text-[#20e3a2]" />
+                <span className="text-xs font-semibold text-white">Forward</span>
+                <Forward className="w-4 h-4 text-[#8d97ab] group-hover:text-[#20e3a2]" />
               </button>
 
               {/* Copy Option */}
               <button
                 onClick={() => {
-                  const textToCopy = longPressedMsg.text || longPressedMsg.file_name || '';
+                  let textToCopy = longPressedMsg.text || longPressedMsg.file_name || '';
+                  if (textToCopy.startsWith('[Forwarded]: ')) {
+                    textToCopy = textToCopy.substring('[Forwarded]: '.length);
+                  }
                   navigator.clipboard.writeText(textToCopy);
                   showLocalToast('Copied to clipboard!');
                   setLongPressedMsg(null);
                 }}
-                className="w-full flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 transition-all cursor-pointer text-left group"
+                className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-white/10 transition-colors cursor-pointer text-left group"
               >
-                <span className="text-xs font-bold text-white group-hover:text-sky-400 transition-colors">Copy Text</span>
-                <Copy className="w-4 h-4 text-sky-400" />
+                <span className="text-xs font-semibold text-white">Copy</span>
+                <Copy className="w-4 h-4 text-[#8d97ab] group-hover:text-sky-400" />
               </button>
 
-              {/* Edit Option (if sent by current user) */}
-              {longPressedMsg.sender_id === currentUser.id && !longPressedMsg.is_voice && !longPressedMsg.file_name && (
-                <button
-                  onClick={() => {
-                    setEditingMsg({ id: longPressedMsg.id, text: longPressedMsg.text || '' });
-                  }}
-                  className="w-full flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 transition-all cursor-pointer text-left group"
-                >
-                  <span className="text-xs font-bold text-white group-hover:text-purple-400 transition-colors">Edit Message</span>
-                  <Edit3 className="w-4 h-4 text-purple-400" />
-                </button>
-              )}
+              {/* Edit Option (Always displayed for messages & ended call cards as requested) */}
+              <button
+                onClick={() => {
+                  let textToEdit = longPressedMsg.text || '';
+                  if (textToEdit.startsWith('_vyper_call_::')) {
+                    try {
+                      const meta = JSON.parse(textToEdit.substring('_vyper_call_::'.length));
+                      textToEdit = meta.type === 'voice' ? 'Voice Call' : 'Video Call';
+                    } catch {
+                      textToEdit = 'Call Note';
+                    }
+                  } else if (textToEdit.startsWith('_vyper_reply_::')) {
+                    try {
+                      const meta = JSON.parse(textToEdit.substring('_vyper_reply_::'.length));
+                      textToEdit = meta.text || '';
+                    } catch {
+                      textToEdit = '';
+                    }
+                  } else if (textToEdit.startsWith('[Forwarded]: ')) {
+                    textToEdit = textToEdit.substring('[Forwarded]: '.length);
+                  }
+                  setEditingMsg({ id: longPressedMsg.id, text: textToEdit });
+                  setLongPressedMsg(null);
+                }}
+                className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-white/10 transition-colors cursor-pointer text-left group"
+              >
+                <span className="text-xs font-semibold text-white">Edit</span>
+                <Edit3 className="w-4 h-4 text-[#8d97ab] group-hover:text-purple-400" />
+              </button>
 
-              {/* Info Option (if sent by current user) */}
-              {longPressedMsg.sender_id === currentUser.id && (
-                <button
-                  onClick={() => {
-                    setInfoMsg(longPressedMsg);
-                    setLongPressedMsg(null);
-                  }}
-                  className="w-full flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/10 transition-all cursor-pointer text-left group"
-                >
-                  <span className="text-xs font-bold text-white group-hover:text-teal-400 transition-colors">Message Info</span>
-                  <Info className="w-4 h-4 text-teal-400" />
-                </button>
-              )}
+              {/* Info Option */}
+              <button
+                onClick={() => {
+                  setInfoMsg(longPressedMsg);
+                  setLongPressedMsg(null);
+                }}
+                className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-white/10 transition-colors cursor-pointer text-left group"
+              >
+                <span className="text-xs font-semibold text-white">Info</span>
+                <Info className="w-4 h-4 text-[#8d97ab] group-hover:text-teal-400" />
+              </button>
 
               {/* Delete Option */}
               <button
@@ -4580,11 +4649,12 @@ export default function ChatScreen({
                     id: longPressedMsg.id,
                     forEveryone: longPressedMsg.sender_id === currentUser.id
                   });
+                  setLongPressedMsg(null);
                 }}
-                className="w-full flex items-center justify-between p-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/30 transition-all cursor-pointer text-left group"
+                className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-rose-500/15 transition-colors cursor-pointer text-left group"
               >
-                <span className="text-xs font-bold text-rose-500">Delete Message</span>
-                <Trash2 className="w-4 h-4 text-rose-500" />
+                <span className="text-xs font-semibold text-[#ff453a]">Delete</span>
+                <Trash2 className="w-4 h-4 text-[#ff453a]" />
               </button>
             </div>
           </div>

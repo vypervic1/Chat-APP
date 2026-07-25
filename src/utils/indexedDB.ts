@@ -9,6 +9,8 @@ export interface SavedFile {
   fileType: string;
   fileData: string; // Base64 data url
   savedAt: string;
+  direction?: 'to' | 'from';
+  targetName?: string;
 }
 
 export function openDatabase(): Promise<IDBDatabase> {
@@ -36,7 +38,9 @@ export async function saveFileToLocalStorage(
   fileName: string,
   fileType: string,
   fileData: string,
-  id?: string
+  id?: string,
+  direction?: 'to' | 'from',
+  targetName?: string
 ): Promise<void> {
   try {
     const db = await openDatabase();
@@ -49,7 +53,9 @@ export async function saveFileToLocalStorage(
       fileName,
       fileType,
       fileData,
-      savedAt: new Date().toISOString()
+      savedAt: new Date().toISOString(),
+      direction,
+      targetName
     };
 
     return new Promise((resolve, reject) => {

@@ -71,14 +71,38 @@ export default function App() {
   const applyAppTheme = (theme: string) => {
     const root = document.documentElement;
     root.setAttribute('data-theme', theme);
-    if (theme === 'light') {
-      root.style.setProperty('--bg', '#f3f5f9');
+    if (theme === 'light-liquid-glass') {
+      root.style.setProperty('--bg', '#f0f4f8');
       root.style.setProperty('--surface', '#ffffff');
       root.style.setProperty('--surface-2', '#e2e8f0');
       root.style.setProperty('--surface-3', '#cbd5e1');
-      root.style.setProperty('--hairline', '#e2e8f0');
-      root.style.setProperty('--accent-a', '#10b981');
+      root.style.setProperty('--hairline', '#cbd5e1');
+      root.style.setProperty('--accent-a', '#0284c7');
       root.style.setProperty('--accent-b', '#6366f1');
+    } else if (theme === 'light-solar') {
+      root.style.setProperty('--bg', '#fffbf5');
+      root.style.setProperty('--surface', '#ffffff');
+      root.style.setProperty('--surface-2', '#fef3c7');
+      root.style.setProperty('--surface-3', '#fde68a');
+      root.style.setProperty('--hairline', '#fcd34d');
+      root.style.setProperty('--accent-a', '#0284c7');
+      root.style.setProperty('--accent-b', '#8b5cf6');
+    } else if (theme === 'light-emerald') {
+      root.style.setProperty('--bg', '#f0fdf4');
+      root.style.setProperty('--surface', '#ffffff');
+      root.style.setProperty('--surface-2', '#dcfce7');
+      root.style.setProperty('--surface-3', '#bbf7d0');
+      root.style.setProperty('--hairline', '#86efac');
+      root.style.setProperty('--accent-a', '#059669');
+      root.style.setProperty('--accent-b', '#10b981');
+    } else if (theme === 'light' || theme === 'light-cosmic') {
+      root.style.setProperty('--bg', '#f8fafc');
+      root.style.setProperty('--surface', '#ffffff');
+      root.style.setProperty('--surface-2', '#f1f5f9');
+      root.style.setProperty('--surface-3', '#e2e8f0');
+      root.style.setProperty('--hairline', '#e2e8f0');
+      root.style.setProperty('--accent-a', '#20e3a2');
+      root.style.setProperty('--accent-b', '#7c5cff');
     } else if (theme === 'emerald') {
       root.style.setProperty('--bg', '#040706');
       root.style.setProperty('--surface', '#0a0e0c');
@@ -323,6 +347,16 @@ export default function App() {
     };
   }, []);
 
+  // Groups state
+  const [groups, setGroups] = useState<Group[]>(() => {
+    try {
+      const local = localStorage.getItem('vypervic_secure_groups_v1');
+      return local ? JSON.parse(local) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
   // Automatically save all media, documents & files and voice records (sent or received) to device local storage
   const processedFileMsgIdsRef = useRef<Set<string>>(new Set());
 
@@ -330,8 +364,39 @@ export default function App() {
     messagesList.forEach((msg) => {
       if (msg.file_data && msg.file_name && !processedFileMsgIdsRef.current.has(msg.id)) {
         processedFileMsgIdsRef.current.add(msg.id);
+        
+        const isSentByMe = currentUser && msg.sender_id === currentUser.id;
+        const direction: 'to' | 'from' = isSentByMe ? 'to' : 'from';
+        
+        let targetName = 'Recipient';
+        if (isSentByMe) {
+          if (msg.chat_id.startsWith('dm:')) {
+            const parts = msg.chat_id.split(':');
+            const otherId = parts.find(id => id !== currentUser.id);
+            const peer = allProfiles.find(p => p.id === otherId);
+            targetName = peer?.display_name || peer?.username || 'Recipient';
+          } else {
+            const grp = groups.find(g => g.id === msg.chat_id);
+            targetName = grp?.name || (msg.chat_id === 'general' ? 'VyperVic General' : 'Group Chat');
+          }
+        } else {
+          const sender = allProfiles.find(p => p.id === msg.sender_id) || msg.profiles;
+          targetName = sender?.display_name || sender?.username || 'Contact';
+        }
+
+        const effectiveFileType = msg.is_voice 
+          ? 'audio/voice-note' 
+          : (msg.file_type || 'application/octet-stream');
+
         // Save to IndexedDB
-        saveFileToLocalStorage(msg.file_name, msg.file_type || 'application/octet-stream', msg.file_data, msg.id)
+        saveFileToLocalStorage(
+          msg.file_name, 
+          effectiveFileType, 
+          msg.file_data, 
+          msg.id,
+          direction,
+          targetName
+        )
           .then(() => {
             console.log(`Automatically cached/saved ${msg.file_name} to local storage`);
           })
@@ -346,8 +411,35 @@ export default function App() {
         const urls = msg.text.match(urlRegex);
         if (urls && urls.length > 0) {
           processedFileMsgIdsRef.current.add(msg.id + '_link');
+
+          const isSentByMe = currentUser && msg.sender_id === currentUser.id;
+          const direction: 'to' | 'from' = isSentByMe ? 'to' : 'from';
+          
+          let targetName = 'Operator';
+          if (isSentByMe) {
+            if (msg.chat_id.startsWith('dm:')) {
+              const parts = msg.chat_id.split(':');
+              const otherId = parts.find(id => id !== currentUser.id);
+              const peer = allProfiles.find(p => p.id === otherId);
+              targetName = peer?.display_name || peer?.username || 'User';
+            } else {
+              const grp = groups.find(g => g.id === msg.chat_id);
+              targetName = grp?.name || (msg.chat_id === 'general' ? 'VyperVic General' : 'Group Chat');
+            }
+          } else {
+            const sender = allProfiles.find(p => p.id === msg.sender_id) || msg.profiles;
+            targetName = sender?.display_name || sender?.username || 'Operator';
+          }
+
           urls.forEach((url, index) => {
-            saveFileToLocalStorage(url, 'link', url, `${msg.id}_link_${index}`)
+            saveFileToLocalStorage(
+              url, 
+              'link', 
+              url, 
+              `${msg.id}_link_${index}`,
+              direction,
+              targetName
+            )
               .then(() => {
                 console.log(`Automatically cached link ${url} to local storage`);
               })
@@ -358,9 +450,19 @@ export default function App() {
         }
       }
     });
-  }, [messagesList]);
+  }, [messagesList, currentUser, allProfiles, groups]);
 
-  // New Chat Features State
+  // Global roast toast event listener
+  useEffect(() => {
+    const handleRoastToast = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail) {
+        showToast(detail);
+      }
+    };
+    window.addEventListener('vyper_show_roast_toast', handleRoastToast);
+    return () => window.removeEventListener('vyper_show_roast_toast', handleRoastToast);
+  }, []);
   const [typingState, setTypingState] = useState<Record<string, Record<string, { username: string; timestamp: number }>>>({});
   
   // Load and persist read receipts
@@ -442,15 +544,7 @@ export default function App() {
     }
   });
 
-  // Groups and Custom Themes (Requirement 3.1 & 3.2)
-  const [groups, setGroups] = useState<Group[]>(() => {
-    try {
-      const local = localStorage.getItem('vypervic_secure_groups_v1');
-      return local ? JSON.parse(local) : [];
-    } catch (e) {
-      return [];
-    }
-  });
+  // Custom Themes (Requirement 3.1 & 3.2)
 
   const [chatThemes, setChatThemes] = useState<Record<string, ThemeConfig>>(() => {
     try {
@@ -1602,13 +1696,21 @@ export default function App() {
       return;
     }
     isInitiatingCallRef.current = true;
-    const isGeneral = selectedChatId === 'general';
-    if (!isGeneral && !selectedPeerProfile) {
-      isInitiatingCallRef.current = false;
-      return;
+    
+    let receiverId = 'general';
+    if (selectedChatId?.startsWith('group:')) {
+      receiverId = selectedChatId;
+    } else if (selectedChatId === 'general') {
+      receiverId = 'general';
+    } else if (selectedPeerProfile?.id) {
+      receiverId = selectedPeerProfile.id;
+    } else if (selectedChatId?.startsWith('dm:')) {
+      const parts = selectedChatId.split(':');
+      const peerId = parts.find((p) => p !== 'dm' && p !== currentUser.id);
+      receiverId = peerId || 'general';
     }
 
-    const receiverId = isGeneral ? 'general' : selectedPeerProfile!.id;
+    const isGeneral = receiverId === 'general' || receiverId.startsWith('group:');
     let callData: any = null;
 
     try {
@@ -1938,98 +2040,140 @@ export default function App() {
   };
 
   return (
-    <div className="phone relative w-[390px] h-[844px] max-h-[96vh] bg-[#080b10] rounded-[52px] border-[10px] border-black shadow-[0_0_0_2px_#232a35,0_40px_80px_-20px_rgba(0,0,0,0.7),0_0_120px_-40px_rgba(124,92,255,0.35)] overflow-hidden">
+    <div className="w-full h-full min-h-screen flex items-center justify-center p-2 sm:p-4 bg-[#05070a] overflow-x-hidden">
+      <div className="phone relative w-full max-w-[420px] h-[100dvh] sm:h-[844px] max-h-[100dvh] sm:max-h-[920px] bg-[#080b10] rounded-[36px] sm:rounded-[52px] border-[6px] sm:border-[10px] border-[#131922] shadow-[0_0_0_2px_#232a35,0_25px_60px_-15px_rgba(0,0,0,0.85),0_0_100px_-20px_rgba(124,92,255,0.3)] overflow-hidden flex flex-col mx-auto ring-1 ring-white/10">
+      {/* iOS Dynamic Island Component */}
+      <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-[1000] flex flex-col items-center pointer-events-auto">
+        <AnimatePresence mode="wait">
+          {headsUpNotification ? (
+            <motion.div
+              key="expanded-island-notification"
+              initial={{ width: 112, height: 24, borderRadius: 24, opacity: 0.8, scale: 0.9 }}
+              animate={{ width: 'calc(100% - 24px)', maxWidth: 380, height: 'auto', borderRadius: 32, opacity: 1, scale: 1 }}
+              exit={{ width: 112, height: 24, borderRadius: 24, opacity: 0, scale: 0.9 }}
+              transition={{ type: 'spring', damping: 22, stiffness: 280 }}
+              className="bg-black/95 backdrop-blur-2xl border border-white/20 text-white shadow-[0_20px_60px_rgba(0,0,0,0.9)] overflow-hidden p-3.5 flex flex-col gap-2.5 select-none w-[calc(100vw-32px)] max-w-[380px]"
+            >
+              <div className="flex items-start justify-between gap-2.5">
+                <div 
+                  className="flex items-center gap-3 flex-1 cursor-pointer min-w-0"
+                  onClick={() => selectChatFromNotification(headsUpNotification.chatId)}
+                >
+                  {/* Sender Avatar / Icon */}
+                  <div className="relative shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#20e3a2] to-[#7c5cff] flex items-center justify-center text-white text-xs font-black shadow-lg">
+                      {headsUpNotification.senderName.substring(0, 1).toUpperCase()}
+                    </div>
+                    <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-black flex items-center justify-center">
+                      <div className="w-2 h-2 rounded-full bg-[#20e3a2] animate-ping" />
+                    </div>
+                  </div>
+
+                  {/* Notification Content */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="font-display font-extrabold text-[13px] text-white truncate max-w-[150px]">
+                        {headsUpNotification.senderName}
+                      </span>
+                      <span className="text-[9px] font-bold text-[#20e3a2] bg-[#20e3a2]/15 px-2 py-0.5 rounded-full uppercase shrink-0">
+                        now
+                      </span>
+                    </div>
+                    <p className="text-[11.5px] text-[#a0a8b8] truncate mt-0.5 font-medium leading-snug">
+                      {headsUpNotification.body}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Controls */}
+                <div className="flex items-center gap-1 shrink-0 pt-0.5">
+                  <button
+                    onClick={() => setShowHeadsUpReply(!showHeadsUpReply)}
+                    className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-[#20e3a2] transition-colors cursor-pointer"
+                    title="Quick Reply"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                  </button>
+                  <button 
+                    onClick={() => setHeadsUpNotification(null)}
+                    className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-[#8d97ab] hover:text-white transition-colors cursor-pointer"
+                    title="Dismiss"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick Reply Form inside Dynamic Island */}
+              {showHeadsUpReply && (
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!headsUpReplyText.trim()) return;
+                    handleReplyFromNotification(headsUpNotification.id, headsUpReplyText);
+                  }}
+                  className="flex items-center gap-2 bg-[#121822] border border-white/15 rounded-2xl px-3 py-1.5 animate-fade-in mt-0.5"
+                >
+                  <input 
+                    type="text"
+                    placeholder="Reply from Dynamic Island..."
+                    value={headsUpReplyText}
+                    onChange={(e) => setHeadsUpReplyText(e.target.value)}
+                    className="flex-1 bg-transparent border-none outline-none text-[12px] text-white placeholder-[#5a6478] py-1 font-medium"
+                    autoFocus
+                  />
+                  <button 
+                    type="submit"
+                    className="p-1.5 rounded-xl bg-[#20e3a2] text-black font-bold cursor-pointer hover:bg-[#20e3a2]/90 shadow-sm"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                  </button>
+                </form>
+              )}
+            </motion.div>
+          ) : (
+            <motion.div
+              key="compact-island"
+              initial={{ width: 110, height: 26, borderRadius: 20 }}
+              animate={{ width: activeCall ? 140 : (getUnifiedFeed().length > 0 ? 125 : 110), height: 26, borderRadius: 20 }}
+              exit={{ opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              onClick={() => {
+                if (getUnifiedFeed().length > 0) {
+                  setShowNotificationCenter(true);
+                }
+              }}
+              className="bg-black border border-white/25 rounded-full px-3 py-1 flex items-center justify-center gap-2 shadow-[0_4px_20px_rgba(0,0,0,0.85)] cursor-pointer hover:border-white/40 transition-all select-none group ring-1 ring-white/10"
+            >
+              {activeCall ? (
+                <div className="flex items-center justify-between w-full text-white text-[10px] font-bold">
+                  <div className="flex items-center gap-1.5 text-[#20e3a2]">
+                    <div className="w-2 h-2 rounded-full bg-[#20e3a2] animate-pulse" />
+                    <span>Call Active</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center gap-1.5 w-full">
+                  {getUnifiedFeed().length > 0 ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[#20e3a2] animate-ping" />
+                      <span className="text-[10px] font-black text-[#20e3a2] font-mono tracking-tight">{getUnifiedFeed().length} new</span>
+                    </div>
+                  ) : (
+                    <div className="w-1.5 h-1.5 rounded-full bg-white/20" />
+                  )}
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
       {/* Sleek, Realistic Smartphone Status Bar */}
       <div 
         className="absolute top-0 left-0 right-0 h-12 bg-transparent flex items-center justify-center select-none z-50 pointer-events-none"
       >
       </div>
-
-      {/* Dynamic Heads-up Notification Banner */}
-      <AnimatePresence>
-        {headsUpNotification && (
-          <motion.div
-            initial={{ y: -120, opacity: 0, scale: 0.95 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: -120, opacity: 0, scale: 0.95 }}
-            transition={{ type: 'spring', damping: 20, stiffness: 150 }}
-            className="absolute top-[54px] left-3.5 right-3.5 bg-[#131922]/98 backdrop-blur-md border border-[#212a38] rounded-2xl p-3.5 shadow-[0_16px_40px_-10px_rgba(0,0,0,0.6)] z-[1000] flex flex-col gap-2.5 transition-all select-none"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div 
-                className="flex items-center gap-2.5 flex-1 cursor-pointer min-w-0"
-                onClick={() => selectChatFromNotification(headsUpNotification.chatId)}
-              >
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#20e3a2] to-[#7c5cff] flex items-center justify-center text-white text-xs font-black shadow shrink-0">
-                  {headsUpNotification.senderName.substring(0, 1).toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="font-display font-extrabold text-[12.5px] text-white truncate max-w-[130px]">
-                      {headsUpNotification.senderName}
-                    </span>
-                    <span className="text-[9px] text-[#20e3a2] font-semibold bg-[#20e3a2]/10 px-1.5 py-0.2 rounded uppercase shrink-0">
-                      Now
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-[#8d97ab] truncate mt-0.5 font-medium">
-                    {headsUpNotification.body}
-                  </p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setHeadsUpNotification(null)}
-                className="text-[#5a6478] hover:text-white p-1 rounded-full cursor-pointer hover:bg-white/5 shrink-0"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 border-t border-[#212a38]/40 pt-2">
-              <button 
-                onClick={() => selectChatFromNotification(headsUpNotification.chatId)}
-                className="text-[10px] font-bold text-[#8d97ab] hover:text-white bg-[#1d2531] px-3 py-1.5 rounded-lg cursor-pointer"
-              >
-                Open
-              </button>
-              <button 
-                onClick={() => {
-                  setShowHeadsUpReply(!showHeadsUpReply);
-                }}
-                className="text-[10px] font-bold text-[#20e3a2] bg-[#20e3a2]/10 hover:bg-[#20e3a2]/20 px-3 py-1.5 rounded-lg cursor-pointer"
-              >
-                {showHeadsUpReply ? 'Cancel' : 'Quick Reply'}
-              </button>
-            </div>
-
-            {showHeadsUpReply && (
-              <form 
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!headsUpReplyText.trim()) return;
-                  handleReplyFromNotification(headsUpNotification.id, headsUpReplyText);
-                }}
-                className="flex items-center gap-2 bg-[#0c1017] border border-[#212a38]/80 rounded-xl px-2.5 py-1.5 animate-fade-in"
-              >
-                <input 
-                  type="text"
-                  placeholder="Type quick reply..."
-                  value={headsUpReplyText}
-                  onChange={(e) => setHeadsUpReplyText(e.target.value)}
-                  className="flex-1 bg-transparent border-none outline-none text-[11px] text-white placeholder-[#5a6478] py-1"
-                  autoFocus
-                />
-                <button 
-                  type="submit"
-                  className="p-1 rounded-lg bg-[#20e3a2]/20 text-[#20e3a2] cursor-pointer hover:bg-[#20e3a2]/30"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                </button>
-              </form>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Slide-down Notification Center Drawer */}
       <AnimatePresence>
@@ -2363,8 +2507,7 @@ export default function App() {
           {toastMessage}
         </div>
       )}
-
-      <div className="home-indicator" />
     </div>
-  );
+  </div>
+);
 }

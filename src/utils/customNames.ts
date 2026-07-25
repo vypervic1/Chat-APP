@@ -25,10 +25,20 @@ export function isUserOnline(profile: Profile | null | undefined): boolean {
   return diffMs < 120 * 1000;
 }
 
-export function parseProfileAbout(aboutStr: string | null) {
+export function parseProfileAbout(aboutStr: string | null, userId?: string) {
   let thinking: string | null = null;
   let coverUrl: string | null = null;
   let about = aboutStr || '';
+
+  // Check local cache fallback first if userId provided
+  if (userId) {
+    try {
+      const cachedCover = localStorage.getItem(`vyper_cover_${userId}`);
+      if (cachedCover) {
+        coverUrl = cachedCover;
+      }
+    } catch (e) {}
+  }
 
   // Parse thinking if present at the start
   const thinkingMatch = about.match(/^\[thinking:(.*?)\]/);
@@ -37,10 +47,16 @@ export function parseProfileAbout(aboutStr: string | null) {
     about = about.substring(thinkingMatch[0].length);
   }
 
-  // Parse coverUrl if present
-  const coverMatch = about.match(/^\[cover:(.*?)\]/);
+  // Parse coverUrl if present and not already found locally
+  const coverMatch = about.match(/^\[cover:([\s\S]*?)\]/);
   if (coverMatch) {
-    coverUrl = coverMatch[1];
+    if (!coverUrl) {
+      try {
+        coverUrl = decodeURIComponent(coverMatch[1]);
+      } catch (e) {
+        coverUrl = coverMatch[1];
+      }
+    }
     about = about.substring(coverMatch[0].length);
   }
 
@@ -57,7 +73,7 @@ export function buildProfileAbout(thinking: string | null, coverUrl: string | nu
     result += `[thinking:${thinking.trim().substring(0, 40)}]`;
   }
   if (coverUrl && coverUrl.trim()) {
-    result += `[cover:${coverUrl.trim()}]`;
+    result += `[cover:${encodeURIComponent(coverUrl.trim())}]`;
   }
   result += about;
   return result;

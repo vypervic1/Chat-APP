@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Profile, Message, Group } from '../types';
-import { Search, Settings, MessageSquare, Shield, Circle, User, Bell, Users, WifiOff } from 'lucide-react';
+import { Search, Settings, MessageSquare, Shield, Circle, User, Bell, Users, WifiOff, MoreHorizontal, Archive, Lock, X } from 'lucide-react';
 import { getContactDisplayName, isUserOnline } from '../utils/customNames';
 
 interface ChatListScreenProps {
@@ -37,6 +37,9 @@ export default function ChatListScreen({
   onViewProfileDetail,
 }: ChatListScreenProps) {
   const [customNamesTick, setCustomNamesTick] = useState(0);
+  const [showMenu, setShowMenu] = useState(false);
+  const [showArchivedModal, setShowArchivedModal] = useState(false);
+  const [showLockedModal, setShowLockedModal] = useState(false);
   useEffect(() => {
     const handleUpdate = () => setCustomNamesTick((t) => t + 1);
     window.addEventListener('vyper_custom_names_updated', handleUpdate);
@@ -119,6 +122,14 @@ export default function ChatListScreen({
       textPreview = '🎤 Voice note';
     } else if (lastMsg.file_name) {
       textPreview = `📎 ${lastMsg.file_name}`;
+    } else if (textPreview.startsWith('_vyper_reply_::')) {
+      try {
+        const jsonStr = textPreview.substring('_vyper_reply_::'.length);
+        const meta = JSON.parse(jsonStr);
+        textPreview = meta.text || meta.reply_to_text || 'Reply';
+      } catch (err) {
+        textPreview = 'Reply';
+      }
     } else if (textPreview.startsWith('_vyper_call_::')) {
       try {
         const jsonStr = textPreview.substring('_vyper_call_::'.length);
@@ -133,6 +144,12 @@ export default function ChatListScreen({
       } catch (err) {
         textPreview = '📞 Call message';
       }
+    }
+
+    if (textPreview.startsWith('[Forwarded]: ')) {
+      textPreview = textPreview.substring('[Forwarded]: '.length);
+    } else if (textPreview.startsWith('[Forwarded File]')) {
+      textPreview = '📎 Forwarded File';
     }
 
     return {
@@ -210,7 +227,7 @@ export default function ChatListScreen({
   return (
     <div className="absolute inset-0 flex flex-col bg-[#080b10] text-[#eef1f6] z-10 select-none">
       {/* Header Container */}
-      <div className="pt-[calc(var(--safe-top)+10px)] px-5 pb-4 flex items-center justify-between border-b border-[#212a38] bg-[#080b10]/95 backdrop-blur-md sticky top-0 z-20">
+      <div className="pt-[calc(var(--safe-top)+3px)] px-5 pb-2.5 flex items-center justify-between border-b border-[#212a38] bg-[#080b10]/95 backdrop-blur-md sticky top-0 z-20">
         <div className="flex items-center gap-2.5">
           {isOffline && (
             <div 
@@ -245,30 +262,84 @@ export default function ChatListScreen({
           </span>
         </div>
 
-        {/* Action icons */}
-        <div className="flex flex-col items-center gap-2 z-30">
-          {/* Notification Bell Icon - Mapped ABOVE settings */}
+        {/* Right side icons row: Notification left of Three-Dot Button */}
+        <div className="flex items-center gap-2.5 z-30 relative">
+          {/* Notification Bell Icon */}
           <button
+            type="button"
             onClick={onOpenNotifications}
-            className="relative w-9 h-9 rounded-full bg-[#161d28] border border-[#20e3a2]/40 flex items-center justify-center cursor-pointer hover:bg-[#1d2531] transition-colors group shadow-md"
+            className="relative w-8.5 h-8.5 rounded-full bg-[#161d28] border border-[#20e3a2]/40 flex items-center justify-center cursor-pointer hover:bg-[#1d2531] transition-colors group shadow-md"
             title="Notifications & Messages"
           >
-            <Bell className="w-4.5 h-4.5 text-[#20e3a2] group-hover:scale-110 transition-transform" />
+            <Bell className="w-4 h-4 text-[#20e3a2] group-hover:scale-110 transition-transform" />
             {unreadNotificationsCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-4.5 h-4.5 px-1 bg-[#ff5470] text-black text-[9px] font-black rounded-full flex items-center justify-center animate-pulse shadow-[0_0_6px_rgba(255,84,112,0.6)]">
+              <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-[#ff5470] text-black text-[9px] font-black rounded-full flex items-center justify-center animate-pulse shadow-[0_0_6px_rgba(255,84,112,0.6)]">
                 {unreadNotificationsCount}
               </span>
             )}
           </button>
-          
-          <div className="flex items-center gap-2">
+
+          {/* Three-dot horizontal settings button */}
+          <div className="relative">
             <button
-              onClick={onOpenSettings}
-              className="w-9 h-9 rounded-full bg-[#161d28] border border-[#212a38] flex items-center justify-center cursor-pointer hover:bg-[#1d2531] transition-colors"
-              title="Open Settings"
+              type="button"
+              onClick={() => setShowMenu((prev) => !prev)}
+              className="w-8.5 h-8.5 rounded-full bg-[#161d28] border border-[#212a38] flex items-center justify-center cursor-pointer hover:bg-[#1d2531] transition-colors"
+              title="More Options"
             >
-              <Settings className="w-4.5 h-4.5 text-[#8d97ab]" />
+              <MoreHorizontal className="w-4.5 h-4.5 text-[#8d97ab]" />
             </button>
+
+            {/* Dropdown Menu */}
+            {showMenu && (
+              <>
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={() => setShowMenu(false)} 
+                />
+                <div className="absolute right-0 mt-2 w-48 bg-[#161d28] border border-[#212a38] rounded-2xl shadow-2xl py-1 z-50 animate-fade-in divide-y divide-[#212a38]/60">
+                  <div className="py-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMenu(false);
+                        setShowArchivedModal(true);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-[#eef1f6] hover:bg-white/5 transition-colors cursor-pointer text-left"
+                    >
+                      <Archive className="w-4 h-4 text-[#7c5cff]" />
+                      <span>Archived Chats</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMenu(false);
+                        setShowLockedModal(true);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-[#eef1f6] hover:bg-white/5 transition-colors cursor-pointer text-left"
+                    >
+                      <Lock className="w-4 h-4 text-[#20e3a2]" />
+                      <span>Locked Chats</span>
+                    </button>
+                  </div>
+
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMenu(false);
+                        onOpenSettings();
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-[#eef1f6] hover:bg-white/5 transition-colors cursor-pointer text-left"
+                    >
+                      <Settings className="w-4 h-4 text-[#8d97ab]" />
+                      <span>Settings</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -624,6 +695,68 @@ export default function ChatListScreen({
       >
         <Search className="w-5.5 h-5.5 text-black group-hover:rotate-12 transition-transform" />
       </button>
+
+      {/* Archived Chats Modal */}
+      {showArchivedModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-[#161d28] border border-[#212a38] rounded-3xl w-full max-w-md p-5 relative shadow-2xl">
+            <button
+              type="button"
+              onClick={() => setShowArchivedModal(false)}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/80 hover:text-white cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 rounded-2xl bg-[#7c5cff]/15 text-[#7c5cff]">
+                <Archive className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-display font-bold text-base text-white leading-tight">Archived Chats</h3>
+                <p className="text-[11px] text-[#8d97ab] mt-0.5">Hidden conversations saved locally</p>
+              </div>
+            </div>
+
+            <div className="p-8 bg-[#080b10]/60 border border-dashed border-[#212a38] rounded-2xl text-center space-y-2">
+              <Archive className="w-8 h-8 text-[#5a6478] mx-auto opacity-40" />
+              <p className="text-xs font-semibold text-[#8d97ab]">No archived conversations</p>
+              <p className="text-[11px] text-[#5a6478]">You have no archived chats at this time.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Locked Chats Modal */}
+      {showLockedModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-[#161d28] border border-[#212a38] rounded-3xl w-full max-w-md p-5 relative shadow-2xl">
+            <button
+              type="button"
+              onClick={() => setShowLockedModal(false)}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/80 hover:text-white cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 rounded-2xl bg-[#20e3a2]/15 text-[#20e3a2]">
+                <Lock className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-display font-bold text-base text-white leading-tight">Locked Chats</h3>
+                <p className="text-[11px] text-[#8d97ab] mt-0.5">PIN & biometric protected chats</p>
+              </div>
+            </div>
+
+            <div className="p-8 bg-[#080b10]/60 border border-dashed border-[#212a38] rounded-2xl text-center space-y-2">
+              <Lock className="w-8 h-8 text-[#20e3a2] mx-auto opacity-40" />
+              <p className="text-xs font-semibold text-[#8d97ab]">No locked chats configured</p>
+              <p className="text-[11px] text-[#5a6478]">Long-press any chat in your list to secure or lock it.</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { supabase } from '../supabase';
 import { Profile, Call } from '../types';
 import { PhoneOff, Phone, Mic, MicOff, Video, VideoOff, ShieldAlert, Minimize2, Maximize2, RefreshCw, UserPlus, Smile, Circle, Square } from 'lucide-react';
 import { saveFileToLocalStorage } from '../utils/indexedDB';
+import { getMiniRoastMessage } from '../utils/roasts';
 
 interface CallOverlayProps {
   currentCall: Call;
@@ -234,18 +235,29 @@ export default function CallOverlay({
         reader.readAsDataURL(blob);
         reader.onloadend = async () => {
           const base64data = reader.result as string;
-          const ext = 'webm';
-          const fileName = `call_record_${Date.now()}.${ext}`;
-          const fileType = type === 'screen' ? 'video/webm' : 'audio/webm';
-
-          // Save to IndexedDB
-          await saveFileToLocalStorage(fileName, fileType, base64data);
-
-          // Forward to user's private chat
-          const chatRoomId = `me:${currentUser.id}`;
-          const textMessage = `🎥 Call Recording [${type === 'screen' ? 'Video/Screen' : 'Voice'}] saved automatically.`;
-
+          const fileName = type === 'voice' ? 'Voicecall record' : 'Videocall record';
+          const fileType = type === 'screen' ? 'video/webm' : 'audio/voice-note';
+          const targetName = peerProfile?.display_name || peerProfile?.username || 'Operator';
           const msgId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `msg_${Date.now()}`;
+
+          // Save to IndexedDB local device storage
+          await saveFileToLocalStorage(
+            fileName, 
+            fileType, 
+            base64data, 
+            msgId, 
+            'from', 
+            targetName
+          );
+
+          // Dispatch mini roast toast
+          const roast = getMiniRoastMessage(type === 'voice' ? 'record_voice' : 'record_video');
+          window.dispatchEvent(new CustomEvent('vyper_show_roast_toast', { detail: roast }));
+
+          // Forward to user's private vault chat as backup
+          const chatRoomId = `me:${currentUser.id}`;
+          const textMessage = `🎥 ${fileName} saved to device local storage.`;
+
           const dbPayload = {
             id: msgId,
             chat_id: chatRoomId,
