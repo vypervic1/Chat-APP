@@ -582,16 +582,16 @@ export default function SettingsScreen({
               <label className="text-[11px] font-bold tracking-[1.4px] text-[#5a6478] uppercase block">
                 What's on your mind
               </label>
-              <span className="text-[10px] text-[#5a6478] font-mono">{thinking.length}/40</span>
+              <span className="text-[10px] text-[#5a6478] font-mono">{thinking.length}/80</span>
             </div>
             <div className="flex items-center justify-between gap-2.5 bg-[#161d28] border border-[#212a38] rounded-2xl px-4 py-3 focus-within:border-[#20e3a2] transition-colors">
               <input
                 type="text"
-                maxLength={40}
+                maxLength={80}
                 placeholder="What's on your mind... 💭"
                 className="w-full bg-transparent border-none outline-none text-sm text-[#eef1f6] font-semibold"
                 value={thinking}
-                onChange={(e) => setThinking(e.target.value.substring(0, 40))}
+                onChange={(e) => setThinking(e.target.value.substring(0, 80))}
                 onBlur={() => handleUpdateAboutAndThinking(thinking, about)}
               />
               <button

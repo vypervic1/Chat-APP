@@ -326,6 +326,13 @@ export default function FullscreenProfile({
             <p className="text-[11px] text-[#8d97ab] font-mono mt-0.5">
               {subTitle}
             </p>
+
+            {parsedAbout?.thinking && (
+              <div className="mt-2.5 bg-[#20e3a2]/10 border border-[#20e3a2]/30 px-3 py-1.5 rounded-xl text-xs font-semibold text-[#20e3a2] flex items-center gap-2 max-w-full">
+                <span className="shrink-0 text-sm">💭</span>
+                <span className="text-white leading-tight break-words font-sans">{parsedAbout.thinking}</span>
+              </div>
+            )}
           </div>
 
           {/* Action buttons for platform users */}

@@ -3256,7 +3256,7 @@ export default function ChatScreen({
                 </div>
 
                 {/* Online status tag */}
-                <span className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
+                <span className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider border whitespace-nowrap inline-block truncate max-w-full ${
                   isUserOnline(selectedUserProfile) 
                     ? 'bg-emerald-500/10 text-[#20e3a2] border-emerald-500/20' 
                     : 'bg-white/5 text-[#8d97ab] border-white/5'

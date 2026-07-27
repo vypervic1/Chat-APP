@@ -66,7 +66,11 @@ export function parseProfileAbout(aboutStr: string | null, userId?: string) {
   // Parse thinking if present at the start
   const thinkingMatch = about.match(/^\[thinking:(.*?)\]/);
   if (thinkingMatch) {
-    thinking = thinkingMatch[1];
+    try {
+      thinking = decodeURIComponent(thinkingMatch[1]);
+    } catch (e) {
+      thinking = thinkingMatch[1];
+    }
     about = about.substring(thinkingMatch[0].length);
   }
 
@@ -93,7 +97,7 @@ export function parseProfileAbout(aboutStr: string | null, userId?: string) {
 export function buildProfileAbout(thinking: string | null, coverUrl: string | null, about: string) {
   let result = '';
   if (thinking && thinking.trim()) {
-    result += `[thinking:${thinking.trim().substring(0, 40)}]`;
+    result += `[thinking:${encodeURIComponent(thinking.trim())}]`;
   }
   if (coverUrl && coverUrl.trim()) {
     result += `[cover:${encodeURIComponent(coverUrl.trim())}]`;
