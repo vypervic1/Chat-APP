@@ -1,11 +1,11 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Profile, Message, Group } from '../types';
-import { Search, Settings, MessageSquare, Shield, Circle, User, Bell, Users, WifiOff, MoreHorizontal, Archive, Lock, X } from 'lucide-react';
+import { Search, Settings, MessageSquare, Shield, Circle, User, Bell, Users, WifiOff, MoreHorizontal, Archive, Lock, X, Star } from 'lucide-react';
 import { getContactDisplayName, isUserOnline } from '../utils/customNames';
 
 interface ChatListScreenProps {
   currentUser: Profile;
-  onSelectChat: (chatId: string, peer?: Profile) => void;
+  onSelectChat: (chatId: string, peer?: Profile, targetMessageId?: string) => void;
   onOpenSettings: () => void;
   onOpenSearch: () => void;
   onOpenNotifications: () => void;
@@ -40,6 +40,7 @@ export default function ChatListScreen({
   const [showMenu, setShowMenu] = useState(false);
   const [showArchivedModal, setShowArchivedModal] = useState(false);
   const [showLockedModal, setShowLockedModal] = useState(false);
+  const [showStarredModal, setShowStarredModal] = useState(false);
   useEffect(() => {
     const handleUpdate = () => setCustomNamesTick((t) => t + 1);
     window.addEventListener('vyper_custom_names_updated', handleUpdate);
@@ -321,6 +322,18 @@ export default function ChatListScreen({
                     >
                       <Lock className="w-4 h-4 text-[#20e3a2]" />
                       <span>Locked Chats</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMenu(false);
+                        setShowStarredModal(true);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-[#eef1f6] hover:bg-white/5 transition-colors cursor-pointer text-left"
+                    >
+                      <Star className="w-4 h-4 text-amber-400" />
+                      <span>Starred</span>
                     </button>
                   </div>
 
@@ -753,6 +766,78 @@ export default function ChatListScreen({
               <Lock className="w-8 h-8 text-[#20e3a2] mx-auto opacity-40" />
               <p className="text-xs font-semibold text-[#8d97ab]">No locked chats configured</p>
               <p className="text-[11px] text-[#5a6478]">Long-press any chat in your list to secure or lock it.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Starred Messages Modal */}
+      {showStarredModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-[#161d28] border border-[#212a38] rounded-3xl w-full max-w-md p-5 relative shadow-2xl flex flex-col max-h-[80vh]">
+            <button
+              type="button"
+              onClick={() => setShowStarredModal(false)}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/80 hover:text-white cursor-pointer z-10"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4 shrink-0">
+              <div className="p-2.5 rounded-2xl bg-amber-500/15 text-amber-400">
+                <Star className="w-5 h-5 fill-current" />
+              </div>
+              <div>
+                <h3 className="font-display font-bold text-base text-white leading-tight">Starred Messages</h3>
+                <p className="text-[11px] text-[#8d97ab] mt-0.5">Bookmarked messages and links</p>
+              </div>
+            </div>
+
+            <div className="overflow-y-auto flex-1 pr-1 space-y-2.5">
+              {(() => {
+                let starredIds: string[] = [];
+                try {
+                  const cached = localStorage.getItem(`vyper_starred_msg_ids_${currentUser.id}`);
+                  starredIds = cached ? JSON.parse(cached) : [];
+                } catch {}
+
+                const starredMsgs = messagesList.filter(m => starredIds.includes(m.id));
+
+                if (starredMsgs.length === 0) {
+                  return (
+                    <div className="p-8 bg-[#080b10]/60 border border-dashed border-[#212a38] rounded-2xl text-center space-y-2 my-auto">
+                      <Star className="w-8 h-8 text-amber-400 mx-auto opacity-40" />
+                      <p className="text-xs font-semibold text-[#8d97ab]">No starred messages</p>
+                      <p className="text-[11px] text-[#5a6478]">Long-press any message in a chat and tap "Star" to bookmark it here.</p>
+                    </div>
+                  );
+                }
+
+                return starredMsgs.map((msg) => {
+                  const sender = allProfiles.find(p => p.id === msg.sender_id);
+                  const senderName = sender?.display_name || sender?.username || 'Operator';
+                  const dateStr = new Date(msg.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+                  return (
+                    <div
+                      key={msg.id}
+                      onClick={() => {
+                        setShowStarredModal(false);
+                        onSelectChat(msg.chat_id, undefined, msg.id);
+                      }}
+                      className="p-3.5 rounded-2xl bg-[#080b10]/60 hover:bg-[#080b10] border border-[#212a38] transition-all cursor-pointer text-left group"
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-xs font-bold text-[#20e3a2] truncate">{senderName}</span>
+                        <span className="text-[10px] text-[#5a6478] font-mono shrink-0">{dateStr}</span>
+                      </div>
+                      <p className="text-xs text-[#eef1f6] line-clamp-2 leading-relaxed">
+                        {msg.text || (msg.is_voice ? '🎤 Voice Note' : '📎 Attachment')}
+                      </p>
+                    </div>
+                  );
+                });
+              })()}
             </div>
           </div>
         </div>

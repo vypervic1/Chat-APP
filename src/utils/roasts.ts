@@ -1,45 +1,41 @@
-// Mini roast message generator for save, delete, update, and special user actions
-export function getMiniRoastMessage(action: string, details?: string): string {
+// Single-word status message generator for action feedback
+export function getMiniRoastMessage(action: string, _details?: string): string {
   switch (action) {
     case 'display_name':
-      return details 
-        ? `Display name set to "${details}"! Modern day witness protection protocol engaged. 🕵️‍♂️`
-        : `Display name updated! Still the same main character syndrome though. 😉`;
+      return 'Updated';
     case 'thinking':
-      return `Status saved! Deep thoughts... hopefully not for long. 🧠✨`;
+      return 'Saved';
     case 'about':
-      return `Bio updated! Your 3 profile stalkers are deeply moved. 📝`;
+      return 'Saved';
     case 'cover':
-      return `Cover photo changed! High-budget aesthetic flex approved. 📸`;
+      return 'Updated';
     case 'avatar':
-      return `Profile pic updated! Catfish rating increased by 15%. 😼`;
+      return 'Updated';
     case 'theme':
-      return details 
-        ? `Switched to ${details} theme! Pretending this changes your life choices. 🎨` 
-        : `Theme updated! Aesthetic upgrade unlocked. 🎨`;
+      return 'Applied';
     case 'delete_file':
-      return `File banished into the digital void! RIP pixels. 💥`;
+      return 'Deleted';
     case 'clear_storage':
-      return `Local storage wiped clean! Digital minimalism level: Master. 🧹`;
+      return 'Cleared';
     case 'delete_chat':
-      return `Chat history erased! Evidence successfully destroyed. 🕵️`;
+      return 'Deleted';
     case 'delete_account':
-      return `Account deleted! Dramatic main character exit score: 10/10. 🎬`;
+      return 'Removed';
     case 'disband_group':
-      return `Group disbanded! Total dictator move, respect. 👑`;
+      return 'Disbanded';
     case 'lock_chat':
-      return `Chat locked! Secrets guarded like Fort Knox. 🔐`;
+      return 'Locked';
     case 'record_voice':
-      return `Voice call recorded and saved to device storage! Keeping receipts, I see. 🎙️`;
+      return 'Recorded';
     case 'record_video':
-      return `Video call recorded and saved to device storage! Evidence secured. 🎥`;
+      return 'Recorded';
     case 'save_media':
-      return `Saved to local storage! Stockpiling data like a digital squirrel. 💾`;
+      return 'Saved';
     case 'download':
-      return details ? `Downloaded ${details}! Hoarding files again, are we? ⬇️` : `File downloaded! Hoarding files again, are we? ⬇️`;
+      return 'Downloaded';
     case 'save_contact_name':
-      return `Contact nickname saved! Secret alias registered in the database. 🤫`;
+      return 'Saved';
     default:
-      return details ? `Action "${action}" completed! ${details}` : `Action saved! Nice move, champion. 😎`;
+      return 'Saved';
   }
 }

@@ -72,13 +72,17 @@ export default function App() {
     const root = document.documentElement;
     root.setAttribute('data-theme', theme);
     if (theme === 'light-liquid-glass') {
-      root.style.setProperty('--bg', '#f0f4f8');
-      root.style.setProperty('--surface', '#ffffff');
-      root.style.setProperty('--surface-2', '#e2e8f0');
-      root.style.setProperty('--surface-3', '#cbd5e1');
-      root.style.setProperty('--hairline', '#cbd5e1');
-      root.style.setProperty('--accent-a', '#0284c7');
-      root.style.setProperty('--accent-b', '#6366f1');
+      root.style.setProperty('--bg', '#f1f5f9');
+      root.style.setProperty('--surface', 'rgba(255, 255, 255, 0.75)');
+      root.style.setProperty('--surface-2', 'rgba(241, 245, 249, 0.85)');
+      root.style.setProperty('--surface-3', 'rgba(226, 232, 240, 0.9)');
+      root.style.setProperty('--hairline', 'rgba(203, 213, 225, 0.6)');
+      root.style.setProperty('--accent-a', '#007aff');
+      root.style.setProperty('--accent-b', '#0284c7');
+      root.style.setProperty('--text-1', '#0f172a');
+      root.style.setProperty('--text-2', '#334155');
+      root.style.setProperty('--text-3', '#64748b');
+      root.style.setProperty('--bubble-recv', 'rgba(255, 255, 255, 0.85)');
     } else if (theme === 'light-solar') {
       root.style.setProperty('--bg', '#fffbf5');
       root.style.setProperty('--surface', '#ffffff');
@@ -87,6 +91,10 @@ export default function App() {
       root.style.setProperty('--hairline', '#fcd34d');
       root.style.setProperty('--accent-a', '#0284c7');
       root.style.setProperty('--accent-b', '#8b5cf6');
+      root.style.setProperty('--text-1', '#1e1b4b');
+      root.style.setProperty('--text-2', '#3730a3');
+      root.style.setProperty('--text-3', '#4338ca');
+      root.style.setProperty('--bubble-recv', '#fef9c3');
     } else if (theme === 'light-emerald') {
       root.style.setProperty('--bg', '#f0fdf4');
       root.style.setProperty('--surface', '#ffffff');
@@ -95,14 +103,22 @@ export default function App() {
       root.style.setProperty('--hairline', '#86efac');
       root.style.setProperty('--accent-a', '#059669');
       root.style.setProperty('--accent-b', '#10b981');
+      root.style.setProperty('--text-1', '#064e3b');
+      root.style.setProperty('--text-2', '#047857');
+      root.style.setProperty('--text-3', '#059669');
+      root.style.setProperty('--bubble-recv', '#e6f4ea');
     } else if (theme === 'light' || theme === 'light-cosmic') {
       root.style.setProperty('--bg', '#f8fafc');
       root.style.setProperty('--surface', '#ffffff');
       root.style.setProperty('--surface-2', '#f1f5f9');
       root.style.setProperty('--surface-3', '#e2e8f0');
-      root.style.setProperty('--hairline', '#e2e8f0');
-      root.style.setProperty('--accent-a', '#20e3a2');
-      root.style.setProperty('--accent-b', '#7c5cff');
+      root.style.setProperty('--hairline', '#cbd5e1');
+      root.style.setProperty('--accent-a', '#059669');
+      root.style.setProperty('--accent-b', '#6366f1');
+      root.style.setProperty('--text-1', '#0f172a');
+      root.style.setProperty('--text-2', '#475569');
+      root.style.setProperty('--text-3', '#64748b');
+      root.style.setProperty('--bubble-recv', '#f1f5f9');
     } else if (theme === 'emerald') {
       root.style.setProperty('--bg', '#040706');
       root.style.setProperty('--surface', '#0a0e0c');
@@ -111,6 +127,10 @@ export default function App() {
       root.style.setProperty('--hairline', '#1a2621');
       root.style.setProperty('--accent-a', '#00ff88');
       root.style.setProperty('--accent-b', '#20e3a2');
+      root.style.setProperty('--text-1', '#eef1f6');
+      root.style.setProperty('--text-2', '#8d97ab');
+      root.style.setProperty('--text-3', '#5a6478');
+      root.style.setProperty('--bubble-recv', '#182130');
     } else if (theme === 'solar') {
       root.style.setProperty('--bg', '#0b0914');
       root.style.setProperty('--surface', '#131024');
@@ -119,14 +139,22 @@ export default function App() {
       root.style.setProperty('--hairline', '#302a54');
       root.style.setProperty('--accent-a', '#00e5ff');
       root.style.setProperty('--accent-b', '#7c5cff');
+      root.style.setProperty('--text-1', '#eef1f6');
+      root.style.setProperty('--text-2', '#8d97ab');
+      root.style.setProperty('--text-3', '#5a6478');
+      root.style.setProperty('--bubble-recv', '#182130');
     } else if (theme === 'liquid-glass') {
-      root.style.setProperty('--bg', '#030509');
-      root.style.setProperty('--surface', 'rgba(13, 19, 32, 0.45)');
-      root.style.setProperty('--surface-2', 'rgba(22, 30, 49, 0.55)');
-      root.style.setProperty('--surface-3', 'rgba(30, 41, 67, 0.65)');
-      root.style.setProperty('--hairline', 'rgba(255, 255, 255, 0.08)');
-      root.style.setProperty('--accent-a', '#38bdf8');
-      root.style.setProperty('--accent-b', '#818cf8');
+      root.style.setProperty('--bg', '#030712');
+      root.style.setProperty('--surface', 'rgba(17, 24, 39, 0.45)');
+      root.style.setProperty('--surface-2', 'rgba(31, 41, 55, 0.55)');
+      root.style.setProperty('--surface-3', 'rgba(55, 65, 81, 0.65)');
+      root.style.setProperty('--hairline', 'rgba(255, 255, 255, 0.12)');
+      root.style.setProperty('--accent-a', '#007aff');
+      root.style.setProperty('--accent-b', '#38bdf8');
+      root.style.setProperty('--text-1', '#f8fafc');
+      root.style.setProperty('--text-2', '#94a3b8');
+      root.style.setProperty('--text-3', '#64748b');
+      root.style.setProperty('--bubble-recv', 'rgba(31, 41, 55, 0.5)');
     } else {
       root.style.setProperty('--bg', '#080b10');
       root.style.setProperty('--surface', '#10151d');
@@ -135,6 +163,10 @@ export default function App() {
       root.style.setProperty('--hairline', '#212a38');
       root.style.setProperty('--accent-a', '#20e3a2');
       root.style.setProperty('--accent-b', '#7c5cff');
+      root.style.setProperty('--text-1', '#eef1f6');
+      root.style.setProperty('--text-2', '#8d97ab');
+      root.style.setProperty('--text-3', '#5a6478');
+      root.style.setProperty('--bubble-recv', '#182130');
     }
   };
 
@@ -306,6 +338,7 @@ export default function App() {
   const [activeScreen, setActiveScreen] = useState<'chatList' | 'chat' | 'search' | 'settings'>('chatList');
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [selectedPeerProfile, setSelectedPeerProfile] = useState<Profile | undefined>(undefined);
+  const [selectedTargetMsgId, setSelectedTargetMsgId] = useState<string | null>(null);
   const [activeProfileView, setActiveProfileView] = useState<{ type: 'user' | 'group' | 'general'; data?: any } | null>(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
@@ -327,7 +360,7 @@ export default function App() {
     const handleDeleteMessageEvent = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail && detail.messageId) {
-        setMessagesList((prev) => prev.filter((m) => m.id !== detail.messageId));
+        setMessagesList((prev) => prev.map((m) => m.id === detail.messageId ? { ...m, text: '_vyper_deleted_::', is_voice: false, file_name: undefined, file_url: undefined, file_data: undefined, file_type: undefined } : m));
       }
     };
     
@@ -524,7 +557,7 @@ export default function App() {
         return next;
       });
       
-      showToast('All notifications marked as read');
+      showToast('Read');
     }
   }, [showNotificationCenter, currentUser, messagesList]);
 
@@ -639,7 +672,7 @@ export default function App() {
     if (headsUpNotification?.id === notifId) {
       setHeadsUpNotification(null);
     }
-    showToast('Reply sent successfully!');
+    showToast('Sent');
   };
 
   // Trigger beautiful heads-up notification drawer and sound for background messages or mentions
@@ -807,7 +840,7 @@ export default function App() {
   // Show a visual toast
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    const timer = setTimeout(() => setToastMessage(null), 3000);
+    const timer = setTimeout(() => setToastMessage(null), 1500);
     return () => clearTimeout(timer);
   };
 
@@ -1284,7 +1317,7 @@ export default function App() {
             setMessagesList((prev) => prev.map((m) => (m.id === updatedMsg.id ? updatedMsg : m)));
           } else if (payload.eventType === 'DELETE') {
             const deletedId = payload.old.id;
-            setMessagesList((prev) => prev.filter((m) => m.id !== deletedId));
+            setMessagesList((prev) => prev.map((m) => m.id === deletedId ? { ...m, text: '_vyper_deleted_::', is_voice: false, file_name: undefined, file_url: undefined, file_data: undefined, file_type: undefined } : m));
           }
         }
       )
@@ -1509,7 +1542,7 @@ export default function App() {
       .on('broadcast', { event: 'delete_message' }, (response: any) => {
         const payload = response.payload;
         if (payload && payload.messageId) {
-          setMessagesList((prev) => prev.filter((m) => m.id !== payload.messageId));
+          setMessagesList((prev) => prev.map((m) => m.id === payload.messageId ? { ...m, text: '_vyper_deleted_::', is_voice: false, file_name: undefined, file_url: undefined, file_data: undefined, file_type: undefined } : m));
         }
       })
       .on('broadcast', { event: 'vyper_group_created' }, (response: any) => {
@@ -2202,7 +2235,7 @@ export default function App() {
                       const ids = getUnifiedFeed().map((item) => item.id);
                       setDismissedFeedItemIds((prev) => [...prev, ...ids]);
                       setNotifications([]);
-                      showToast('Cleared notifications feed');
+                      showToast('Cleared');
                     }}
                     className="text-[11px] font-extrabold text-[#ff5470] bg-[#ff5470]/10 px-2.5 py-1.5 rounded-xl cursor-pointer hover:bg-[#ff5470]/20"
                   >
@@ -2299,9 +2332,10 @@ export default function App() {
               <ChatListScreen
                 currentUser={currentUser}
                 isOffline={isOffline}
-                onSelectChat={(chatId, peer) => {
+                onSelectChat={(chatId, peer, targetMessageId) => {
                   setSelectedChatId(chatId);
                   setSelectedPeerProfile(peer);
+                  setSelectedTargetMsgId(targetMessageId || null);
                   setActiveScreen('chat');
                 }}
                 onOpenSettings={() => setActiveScreen('settings')}
@@ -2323,9 +2357,11 @@ export default function App() {
                 chatId={selectedChatId}
                 peerProfile={selectedPeerProfile}
                 currentUser={currentUser}
+                targetMessageId={selectedTargetMsgId}
                 onBack={() => {
                   setSelectedChatId(null);
                   setSelectedPeerProfile(undefined);
+                  setSelectedTargetMsgId(null);
                   setActiveScreen('chatList');
                 }}
                 onCall={handleInitiateCall}
@@ -2341,9 +2377,10 @@ export default function App() {
                 sendBroadcastEvent={sendBroadcastEvent}
                 pinnedMessageIds={pinnedState[selectedChatId] || []}
                 onTogglePin={(msgId) => handleTogglePin(selectedChatId, msgId)}
-                onSelectChat={(chatId, peer) => {
+                onSelectChat={(chatId, peer, targetMessageId) => {
                   setSelectedChatId(chatId);
                   setSelectedPeerProfile(peer);
+                  setSelectedTargetMsgId(targetMessageId || null);
                   setActiveScreen('chat');
                 }}
                 onSendMessage={(msg) => {
@@ -2503,8 +2540,9 @@ export default function App() {
 
       {/* Global Action Toasts */}
       {toastMessage && (
-        <div className="toast show absolute bottom-[110px] left-1/2 -translate-x-1/2 bg-[#1d2531] border border-[#212a38] text-[#eef1f6] px-[18px] py-[11px] rounded-[30px] text-[13px] font-semibold shadow-[0_12px_30px_rgba(0,0,0,0.4)] z-[600] whitespace-nowrap animate-fade-in-up">
-          {toastMessage}
+        <div className="toast show fixed bottom-5 left-1/2 -translate-x-1/2 bg-[#161d28]/95 border border-[#20e3a2]/40 text-[#eef1f6] px-3.5 py-1.5 rounded-full text-xs font-bold shadow-2xl backdrop-blur-md z-[9999] whitespace-nowrap animate-fade-in flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-[#20e3a2]" />
+          <span>{toastMessage}</span>
         </div>
       )}
     </div>

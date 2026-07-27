@@ -18,7 +18,7 @@ import {
   X 
 } from 'lucide-react';
 import { Profile, Group } from '../types';
-import { isUserOnline, parseProfileAbout } from '../utils/customNames';
+import { isUserOnline, formatLastSeen, parseProfileAbout } from '../utils/customNames';
 
 interface FullscreenProfileProps {
   type: 'user' | 'group' | 'general';
@@ -186,7 +186,7 @@ export default function FullscreenProfile({
     subTitle = `@${profile.username || 'unknown'}`;
     parsedAbout = parseProfileAbout(profile.about);
     bioText = parsedAbout.about || 'No operator bio provided. Communication route is active.';
-    badgeText = isUserOnline(profile) ? 'connected' : 'offline';
+    badgeText = formatLastSeen(profile);
     badgeStyle = isUserOnline(profile) 
       ? 'bg-emerald-500/10 text-[#20e3a2] border-emerald-500/20' 
       : 'bg-white/5 text-[#8d97ab] border-white/5';
@@ -248,7 +248,7 @@ export default function FullscreenProfile({
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#080b10]/40 to-[#080b10]" />
           
           {/* Badge at top right */}
-          <span className={`absolute top-[calc(var(--safe-top)+12px)] right-4 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${badgeStyle} backdrop-blur-sm shadow-md`}>
+          <span className={`absolute top-[calc(var(--safe-top)+12px)] right-4 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${badgeStyle} backdrop-blur-sm shadow-md whitespace-nowrap truncate max-w-[200px]`}>
             {badgeText}
           </span>
         </div>
@@ -516,12 +516,12 @@ export default function FullscreenProfile({
 
                     {/* Right online status marker */}
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider border ${
+                      <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider border whitespace-nowrap truncate max-w-[160px] inline-block ${
                         isUserOnline(member) 
                           ? 'bg-emerald-500/10 text-[#20e3a2] border-emerald-500/20' 
                           : 'bg-white/5 text-[#8d97ab] border-white/5'
                       }`}>
-                        {isUserOnline(member) ? 'online' : 'offline'}
+                        {formatLastSeen(member)}
                       </span>
                     </div>
                   </div>

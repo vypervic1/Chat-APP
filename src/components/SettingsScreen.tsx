@@ -172,14 +172,14 @@ export default function SettingsScreen({
         console.warn('Failed to remove token from local storage:', storageErr);
       }
       setPushTokens(prev => prev.filter(t => t.id !== id));
-      onToast(`Device ${deviceName} removed from local sandbox.`);
+      onToast('Removed');
     } else {
       const success = await deletePushToken(id);
       if (success) {
-        onToast(`Device ${deviceName} de-registered from Push server.`);
+        onToast('Removed');
         await loadPushTokens();
       } else {
-        onToast('Failed to de-register token.');
+        onToast('Failed');
       }
     }
     setTokenToDeregister(null);
@@ -192,12 +192,12 @@ export default function SettingsScreen({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    onToast(`Downloaded ${file.fileName} to system downloads`);
+    onToast('Downloaded');
   };
 
   const handleCopyLink = (url: string) => {
     navigator.clipboard.writeText(url);
-    onToast('Link copied to clipboard!');
+    onToast('Copied');
   };
 
   const handlePlayVoiceNote = (file: SavedFile) => {
@@ -237,9 +237,9 @@ export default function SettingsScreen({
     const status = await requestNotificationPermission();
     setPermission(status);
     if (status === 'granted') {
-      onToast('Notification permission granted successfully! 🎉');
+      onToast('Granted');
     } else {
-      onToast('Permission denied. Please enable notifications in your browser settings.');
+      onToast('Denied');
     }
   };
 
@@ -262,7 +262,7 @@ export default function SettingsScreen({
 
       const res = await registerPushToken(currentUser.id, mockToken, deviceLabel);
       if (res.success) {
-        onToast('Simulated Android device registered successfully!');
+        onToast('Registered');
         await loadPushTokens();
       } else {
         // Fallback simulate locally if Supabase tables are not run yet
@@ -281,11 +281,11 @@ export default function SettingsScreen({
         } catch (storageErr) {
           console.warn('Failed to save push token to local storage:', storageErr);
         }
-        onToast('Registered in local sandbox mode! (Database trigger setup recommended)');
+        onToast('Registered');
         setPushTokens(prev => [...prev, mockRow]);
       }
     } catch (e) {
-      onToast('Device registration failed.');
+      onToast('Failed');
     } finally {
       setRegisteringDevice(false);
     }
@@ -384,7 +384,7 @@ export default function SettingsScreen({
       if (error) console.warn('Supabase cover photo sync warning:', error);
     } catch (err: any) {
       console.error('Error uploading cover photo:', err);
-      onToast('Failed to save cover photo.');
+      onToast('Error');
     }
   };
 
@@ -412,7 +412,7 @@ export default function SettingsScreen({
       if (error) console.warn('Supabase avatar photo sync warning:', error);
     } catch (err: any) {
       console.error('Error uploading avatar:', err);
-      onToast('Failed to save profile picture.');
+      onToast('Error');
     }
   };
 
@@ -432,13 +432,13 @@ export default function SettingsScreen({
       // Supabase Auth client can sign out as absolute fallback
       await supabase.auth.signOut();
 
-      onToast('Account permanently deleted.');
+      onToast('Removed');
       onLogout();
     } catch (err: any) {
       console.error('Error deleting account:', err);
       // Fallback auth signOut in case schema has RPC limitations
       await supabase.auth.signOut();
-      onToast('Account removed.');
+      onToast('Removed');
       onLogout();
     } finally {
       setDeleting(false);

@@ -25,6 +25,29 @@ export function isUserOnline(profile: Profile | null | undefined): boolean {
   return diffMs < 120 * 1000;
 }
 
+export function formatLastSeen(profile: Profile | null | undefined): string {
+  if (!profile) return 'offline';
+  if (isUserOnline(profile)) return 'online';
+  if (!profile.last_seen) return 'last seen recently';
+
+  const date = new Date(profile.last_seen);
+  if (isNaN(date.getTime())) return 'last seen recently';
+
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+
+  if (isToday) {
+    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    return `last seen today at ${timeStr}`;
+  } else {
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const day = date.getDate();
+    const month = monthNames[date.getMonth()];
+    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    return `last seen ${day} ${month} at ${timeStr}`;
+  }
+}
+
 export function parseProfileAbout(aboutStr: string | null, userId?: string) {
   let thinking: string | null = null;
   let coverUrl: string | null = null;
