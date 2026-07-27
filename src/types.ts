@@ -20,6 +20,7 @@ export interface Message {
   file_data: string | null; // Base64 representation of attachments or voice notes
   is_voice: boolean;
   created_at: string;
+  is_pending?: boolean;
   profiles?: Profile; // Joined profile of the sender
 }
 

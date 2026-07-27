@@ -41,6 +41,8 @@ export default function ChatListScreen({
   const [showArchivedModal, setShowArchivedModal] = useState(false);
   const [showLockedModal, setShowLockedModal] = useState(false);
   const [showStarredModal, setShowStarredModal] = useState(false);
+  const [showSearchMessagesModal, setShowSearchMessagesModal] = useState(false);
+  const [searchMessageQuery, setSearchMessageQuery] = useState('');
   useEffect(() => {
     const handleUpdate = () => setCustomNamesTick((t) => t + 1);
     window.addEventListener('vyper_custom_names_updated', handleUpdate);
@@ -226,7 +228,7 @@ export default function ChatListScreen({
   const generalPreview = useMemo(() => getChatPreview('general'), [messagesList, customNamesTick]);
 
   return (
-    <div className="absolute inset-0 flex flex-col bg-[#080b10] text-[#eef1f6] z-10 select-none">
+    <div className="absolute inset-0 flex flex-col bg-[#080b10] text-[#eef1f6] z-10 select-none screen-gpu" style={{ willChange: 'transform', transform: 'translateZ(0)' }}>
       {/* Header Container */}
       <div className="pt-[calc(var(--safe-top)+3px)] px-5 pb-2.5 flex items-center justify-between border-b border-[#212a38] bg-[#080b10]/95 backdrop-blur-md sticky top-0 z-20">
         <div className="flex items-center gap-2.5">
@@ -334,6 +336,18 @@ export default function ChatListScreen({
                     >
                       <Star className="w-4 h-4 text-amber-400" />
                       <span>Starred</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowMenu(false);
+                        setShowSearchMessagesModal(true);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-[#eef1f6] hover:bg-white/5 transition-colors cursor-pointer text-left"
+                    >
+                      <Search className="w-4 h-4 text-[#20e3a2]" />
+                      <span>Message Search</span>
                     </button>
                   </div>
 
@@ -833,6 +847,174 @@ export default function ChatListScreen({
                       </div>
                       <p className="text-xs text-[#eef1f6] line-clamp-2 leading-relaxed">
                         {msg.text || (msg.is_voice ? '🎤 Voice Note' : '📎 Attachment')}
+                      </p>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Global Message Search Modal */}
+      {showSearchMessagesModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-[#161d28] border border-[#212a38] rounded-3xl w-full max-w-lg p-5 relative shadow-2xl flex flex-col max-h-[85vh]">
+            <button
+              type="button"
+              onClick={() => {
+                setShowSearchMessagesModal(false);
+                setSearchMessageQuery('');
+              }}
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/80 hover:text-white cursor-pointer z-10"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-3 shrink-0">
+              <div className="p-2.5 rounded-2xl bg-[#20e3a2]/15 text-[#20e3a2]">
+                <Search className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-display font-bold text-base text-white leading-tight">Search Messages</h3>
+                <p className="text-[11px] text-[#8d97ab] mt-0.5">Search keywords across all chat sessions (latest to oldest)</p>
+              </div>
+            </div>
+
+            {/* Keyword Search Input */}
+            <div className="mb-4 shrink-0">
+              <div className="flex items-center gap-2 bg-[#080b10] border border-[#212a38] focus-within:border-[#20e3a2] rounded-2xl px-3.5 py-2.5 transition-colors">
+                <Search className="w-4 h-4 text-[#8d97ab] shrink-0" />
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="Type a keyword to search messages..."
+                  value={searchMessageQuery}
+                  onChange={(e) => setSearchMessageQuery(e.target.value)}
+                  className="w-full bg-transparent border-none outline-none text-xs text-[#eef1f6] font-semibold placeholder-[#5a6478]"
+                />
+                {searchMessageQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchMessageQuery('')}
+                    className="p-1 rounded-full text-[#8d97ab] hover:text-white"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Results list sorted from latest to oldest */}
+            <div className="overflow-y-auto flex-1 pr-1 space-y-2.5">
+              {(() => {
+                const query = searchMessageQuery.trim().toLowerCase();
+                if (!query) {
+                  return (
+                    <div className="p-8 bg-[#080b10]/60 border border-dashed border-[#212a38] rounded-2xl text-center space-y-2 my-auto">
+                      <Search className="w-8 h-8 text-[#20e3a2] mx-auto opacity-40" />
+                      <p className="text-xs font-semibold text-[#8d97ab]">Message Search Ready</p>
+                      <p className="text-[11px] text-[#5a6478]">Type any keyword above to search through all message histories.</p>
+                    </div>
+                  );
+                }
+
+                // Filter matching messages across all chats
+                const matchingMsgs = messagesList
+                  .filter((m) => {
+                    if (m.text?.startsWith('_vyper_deleted_::')) return false;
+                    let content = m.text || m.file_name || '';
+                    if (content.startsWith('_vyper_reply_::')) {
+                      try {
+                        const meta = JSON.parse(content.substring('_vyper_reply_::'.length));
+                        content = meta.text || '';
+                      } catch (e) {}
+                    }
+                    return content.toLowerCase().includes(query);
+                  })
+                  .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+                if (matchingMsgs.length === 0) {
+                  return (
+                    <div className="p-8 bg-[#080b10]/60 border border-dashed border-[#212a38] rounded-2xl text-center space-y-2 my-auto">
+                      <Search className="w-8 h-8 text-[#ff5470] mx-auto opacity-40" />
+                      <p className="text-xs font-semibold text-[#8d97ab]">No messages found</p>
+                      <p className="text-[11px] text-[#5a6478]">No matching messages for "{searchMessageQuery}". Try another keyword.</p>
+                    </div>
+                  );
+                }
+
+                const renderHighlighted = (text: string, keyword: string) => {
+                  if (!keyword) return text;
+                  const parts = text.split(new RegExp(`(${keyword.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')})`, 'gi'));
+                  return parts.map((part, i) =>
+                    part.toLowerCase() === keyword.toLowerCase() ? (
+                      <mark key={i} className="bg-[#20e3a2]/30 text-[#20e3a2] font-bold rounded px-1 py-0.5">
+                        {part}
+                      </mark>
+                    ) : (
+                      part
+                    )
+                  );
+                };
+
+                return matchingMsgs.map((msg) => {
+                  const sender = allProfiles.find((p) => p.id === msg.sender_id);
+                  const senderName = sender?.display_name || sender?.username || 'Operator';
+                  
+                  // Find chat room title
+                  let roomTitle = 'Direct Message';
+                  if (msg.chat_id === 'general') {
+                    roomTitle = 'General Channel';
+                  } else if (msg.chat_id.startsWith('dm:')) {
+                    const peerId = msg.chat_id.split(':').find((id) => id !== currentUser.id && id !== 'dm');
+                    const peer = allProfiles.find((p) => p.id === peerId);
+                    if (peer) roomTitle = peer.display_name || peer.username;
+                  } else if (groups) {
+                    const grp = groups.find((g) => g.id === msg.chat_id);
+                    if (grp) roomTitle = grp.name;
+                  }
+
+                  let displayContent = msg.text || (msg.is_voice ? 'Voice Note' : msg.file_name || 'Attachment');
+                  if (displayContent.startsWith('_vyper_reply_::')) {
+                    try {
+                      const meta = JSON.parse(displayContent.substring('_vyper_reply_::'.length));
+                      displayContent = meta.text;
+                    } catch (e) {}
+                  }
+
+                  const dateStr = new Date(msg.created_at).toLocaleDateString([], {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  });
+
+                  return (
+                    <div
+                      key={msg.id}
+                      onClick={() => {
+                        setShowSearchMessagesModal(false);
+                        setSearchMessageQuery('');
+                        let targetPeer: Profile | undefined;
+                        if (msg.chat_id.startsWith('dm:')) {
+                          const peerId = msg.chat_id.split(':').find((id) => id !== currentUser.id && id !== 'dm');
+                          targetPeer = allProfiles.find((p) => p.id === peerId);
+                        }
+                        onSelectChat(msg.chat_id, targetPeer, msg.id);
+                      }}
+                      className="p-3.5 rounded-2xl bg-[#080b10]/80 hover:bg-[#080b10] border border-[#212a38] hover:border-[#20e3a2]/40 transition-all cursor-pointer text-left group"
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs font-bold text-white truncate">{roomTitle}</span>
+                          <span className="text-[10px] text-[#20e3a2] font-semibold shrink-0">• {senderName}</span>
+                        </div>
+                        <span className="text-[10px] text-[#5a6478] font-mono shrink-0">{dateStr}</span>
+                      </div>
+                      <p className="text-xs text-[#eef1f6] leading-relaxed line-clamp-2">
+                        {renderHighlighted(displayContent, query)}
                       </p>
                     </div>
                   );

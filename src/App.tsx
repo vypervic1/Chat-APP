@@ -16,6 +16,7 @@ import SettingsScreen from './components/SettingsScreen';
 import CallOverlay from './components/CallOverlay';
 import FullscreenProfile from './components/FullscreenProfile';
 import { saveFileToLocalStorage } from './utils/indexedDB';
+import { flushOfflineQueue } from './utils/offlineSync';
 
 // Helper to gracefully merge/append optimistic and database messages, preventing duplicate rendering
 export function addOrUpdateMessage(prev: Message[], newMsg: Message): Message[] {
@@ -174,6 +175,21 @@ export default function App() {
     applyAppTheme(appTheme);
     localStorage.setItem('vypervic_app_theme', appTheme);
   }, [appTheme]);
+
+  // Auto-flush queued offline messages when network connection is restored
+  useEffect(() => {
+    const handleOnline = () => {
+      flushOfflineQueue();
+    };
+    window.addEventListener('online', handleOnline);
+    // Flush on initial mount if online
+    if (navigator.onLine) {
+      flushOfflineQueue();
+    }
+    return () => {
+      window.removeEventListener('online', handleOnline);
+    };
+  }, []);
 
   // Request notification permissions on first open (PWA-to-Android conversion/Capacitor compatibility)
   useEffect(() => {

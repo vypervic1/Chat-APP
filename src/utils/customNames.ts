@@ -71,6 +71,9 @@ export function parseProfileAbout(aboutStr: string | null, userId?: string) {
     } catch (e) {
       thinking = thinkingMatch[1];
     }
+    if (thinking) {
+      thinking = thinking.replace(/[\r\n]+/g, ' ').trim();
+    }
     about = about.substring(thinkingMatch[0].length);
   }
 

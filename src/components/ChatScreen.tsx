@@ -5,10 +5,12 @@ import {
   ArrowLeft, Phone, Video, Paperclip, Send, Camera, Mic, Square, Trash, Play, Pause, Smile, X, 
   Check, CheckCheck, CornerUpLeft, Pin, Shield, MoreVertical, Image, Palette, FileText, 
   ExternalLink, Trash2, PlusCircle, CheckCircle, Info, Users, Download, Link, UserPlus, UserMinus,
-  RotateCw, Type, PenTool, Sparkles, Forward, PhoneOff, Upload, Star, Copy, Edit3, Ban, ChevronDown
+  RotateCw, Type, PenTool, Sparkles, Forward, PhoneOff, Upload, Star, Copy, Edit3, Ban, ChevronDown, Clock
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { isUserOnline, formatLastSeen, getContactDisplayName, parseProfileAbout } from '../utils/customNames';
+import { globalAudioPlayer, playRecordSound } from '../utils/audioPlayer';
+import { queueOfflineMessage, getOfflineQueue, flushOfflineQueue } from '../utils/offlineSync';
 
 function generateUUID() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -217,7 +219,6 @@ export default function ChatScreen({
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [voiceBlobUrl, setVoiceBlobUrl] = useState<string | null>(null);
   const [voiceBase64, setVoiceBase64] = useState<string | null>(null);
-  const [playingMsgId, setPlayingMsgId] = useState<string | null>(null);
 
   // Reaction menu state
   const [activeReactionMenuMsgId, setActiveReactionMenuMsgId] = useState<string | null>(null);
@@ -612,7 +613,9 @@ export default function ChatScreen({
       setReplyTo(null);
     }
 
-    const messagePayload = {
+    const isDeviceOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+
+    const messagePayload: Message = {
       id: msgId,
       chat_id: chatId,
       sender_id: currentUser.id,
@@ -622,22 +625,33 @@ export default function ChatScreen({
       file_data: fileBase64ToSend || voiceBase64ToSend || null,
       is_voice: !!voiceBase64ToSend,
       created_at: createdAt,
+      is_pending: isDeviceOffline,
     };
+
+    if (isDeviceOffline) {
+      queueOfflineMessage(messagePayload);
+    }
 
     // 1. Optimistically append message to local parent list instantly
     if (onSendMessage) {
-      onSendMessage(messagePayload as Message);
+      onSendMessage(messagePayload);
     }
 
-    // 2. Broadcast message to peers immediately to bypass Postgres replication delay
-    sendBroadcastEvent('new_message', {
-      message: messagePayload,
-    });
+    // 2. Broadcast message to peers immediately if connected
+    if (!isDeviceOffline) {
+      sendBroadcastEvent('new_message', {
+        message: messagePayload,
+      });
+    }
 
     // 3. Best-effort non-blocking DB insertion in background
     setSending(true);
     (async () => {
       try {
+        if (isDeviceOffline) {
+          setSending(false);
+          return;
+        }
         const dbPayload = {
           id: msgId,
           chat_id: chatId,
@@ -651,11 +665,13 @@ export default function ChatScreen({
         const { error } = await supabase.from('messages').insert(dbPayload);
         setSending(false);
         if (error) {
-          console.error('Best-effort DB message insert failed:', error);
+          console.error('Best-effort DB message insert failed, queueing offline:', error);
+          queueOfflineMessage(messagePayload);
         }
       } catch (err) {
         setSending(false);
-        console.error('Error in best-effort DB insert:', err);
+        console.error('Error in best-effort DB insert, queueing offline:', err);
+        queueOfflineMessage(messagePayload);
       }
     })();
   };
@@ -1089,8 +1105,20 @@ export default function ChatScreen({
     };
   };
 
+  const [, setAudioTick] = useState(0);
+
+  useEffect(() => {
+    const unsub = globalAudioPlayer.subscribe(() => {
+      setAudioTick((t) => t + 1);
+    });
+    return () => unsub();
+  }, []);
+
+  const playingMsgId = globalAudioPlayer.getCurrentMsgId();
+
   // 5. Start browser audio recorder
   const startRecording = async () => {
+    playRecordSound('start');
     audioChunksRef.current = [];
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1136,6 +1164,7 @@ export default function ChatScreen({
   // Stop audio recorder
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
+      playRecordSound('stop');
       mediaRecorderRef.current.stop();
       setIsRecording(false);
     }
@@ -1149,20 +1178,10 @@ export default function ChatScreen({
     setFileType(null);
   };
 
-  // Play audio file inside chat list
+  // Play audio file using persistent global audio player
   const togglePlayAudio = (message: Message) => {
-    if (playingMsgId === message.id) {
-      audioPlaybackRef.current?.pause();
-      setPlayingMsgId(null);
-    } else {
-      setPlayingMsgId(message.id);
-      if (audioPlaybackRef.current) {
-        audioPlaybackRef.current.src = message.file_data || '';
-        audioPlaybackRef.current.play();
-        audioPlaybackRef.current.onended = () => {
-          setPlayingMsgId(null);
-        };
-      }
+    if (message.file_data) {
+      globalAudioPlayer.togglePlay(message.id, message.file_data);
     }
   };
 
@@ -1274,7 +1293,7 @@ export default function ChatScreen({
   }, [chatTheme]);
 
   return (
-    <div className="absolute inset-0 flex flex-col bg-[#080b10] z-20 overflow-hidden" style={chatBackgroundStyle}>
+    <div className="absolute inset-0 flex flex-col bg-[#080b10] z-20 overflow-hidden screen-gpu" style={{ ...chatBackgroundStyle, willChange: 'transform', transform: 'translateZ(0)' }}>
       {chatTheme && chatTheme.value !== '#080b10' && (
         <div 
           className="absolute inset-0 bg-[#080b10] pointer-events-none z-0 transition-opacity duration-150" 
@@ -1378,12 +1397,12 @@ export default function ChatScreen({
 
               {/* Thinking Speech Bubble representation as requested */}
               {thinkingText && (
-                <div className="absolute top-[38px] left-0 z-50 animate-fade-in pointer-events-none drop-shadow-2xl">
-                  <div className="relative bg-[#1d2733] border border-[#20e3a2]/40 text-[#eef1f6] text-[10px] px-2.5 py-1 rounded-xl shadow-xl max-w-[340px] sm:max-w-[420px] flex items-center gap-1.5 font-sans">
+                <div className="absolute top-[38px] left-0 z-50 animate-fade-in pointer-events-none drop-shadow-2xl max-w-[220px] sm:max-w-[320px]">
+                  <div className="relative bg-[#1d2733] border border-[#20e3a2]/40 text-[#eef1f6] text-[10px] px-2.5 py-1 rounded-xl shadow-xl flex items-center gap-1.5 font-sans overflow-hidden">
                     <span className="shrink-0 text-[11px]">💭</span>
-                    <span className="font-semibold text-white leading-snug block break-words max-w-full">{thinkingText}</span>
+                    <span className="font-semibold text-white leading-snug whitespace-nowrap overflow-hidden text-ellipsis truncate block min-w-0 flex-1">{thinkingText}</span>
                     {/* Bubble arrow pointing straight up to the avatar */}
-                    <div className="absolute -top-[4px] left-3.5 w-2 h-2 bg-[#1d2733] border-l border-t border-[#20e3a2]/40 rotate-45" />
+                    <div className="absolute -top-[4px] left-3.5 w-2 h-2 bg-[#1d2733] border-l border-t border-[#20e3a2]/40 rotate-45 shrink-0" />
                   </div>
                 </div>
               )}
@@ -1393,8 +1412,8 @@ export default function ChatScreen({
               <div className="font-display font-bold text-[14px] text-white leading-tight truncate">
                 {currentGroup ? currentGroup.name : isMeSpace ? 'Me' : chatId === 'general' ? 'VyperVic General' : peerProfile?.display_name || peerProfile?.username}
               </div>
-              <p className="text-[10px] text-[#5a6478] font-mono leading-none mt-0.5 whitespace-nowrap truncate max-w-[200px] sm:max-w-[300px]">
-                {currentGroup ? `${onlineCount} member${onlineCount === 1 ? '' : 's'} online` : isMeSpace ? 'Private space' : chatId === 'general' ? `${allProfiles.length} operators online` : <span className={`whitespace-nowrap truncate inline-block ${isUserOnline(peerProfile) ? 'text-[#20e3a2] font-semibold' : ''}`}>{formatLastSeen(peerProfile)}</span>}
+              <p className="text-[10px] text-[#5a6478] font-mono leading-none mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis truncate max-w-[180px] sm:max-w-[280px]">
+                {currentGroup ? `${onlineCount} member${onlineCount === 1 ? '' : 's'} online` : isMeSpace ? 'Private space' : chatId === 'general' ? `${allProfiles.length} operators online` : <span className={`whitespace-nowrap overflow-hidden text-ellipsis truncate inline-block ${isUserOnline(peerProfile) ? 'text-[#20e3a2] font-semibold' : ''}`}>{formatLastSeen(peerProfile)}</span>}
               </p>
             </div>
           </div>
@@ -1711,7 +1730,80 @@ export default function ChatScreen({
                         : ''
                     }`}
                   >
-                    {/* Render standard text if any, with reply parse support */}
+                    {/* 1. Render attachment media/file FIRST if present */}
+                    {msg.file_data && msg.file_type?.startsWith('image/') && (
+                      <div 
+                        onClick={() => setPreviewAttachment({ url: msg.file_data!, type: msg.file_type!, name: msg.file_name || 'Image' })}
+                        className="mb-2 rounded-xl overflow-hidden max-w-xs border border-white/10 cursor-zoom-in hover:brightness-110 transition-all"
+                        title="Click to view full screen"
+                      >
+                        <img
+                          src={msg.file_data}
+                          alt="Attachment"
+                          className="w-full object-cover max-h-[180px]"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                    )}
+
+                    {msg.file_data && msg.file_type?.startsWith('video/') && (
+                      <div className="mb-2 rounded-xl overflow-hidden max-w-xs border border-white/10 relative group/video">
+                        <video
+                          src={msg.file_data}
+                          className="w-full max-h-[200px] object-cover"
+                          controls
+                          preload="metadata"
+                        />
+                        <button 
+                          type="button"
+                          onClick={() => setPreviewAttachment({ url: msg.file_data!, type: msg.file_type!, name: msg.file_name || 'Video' })}
+                          className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 text-white opacity-0 group-hover/video:opacity-100 transition-opacity text-[10px] font-bold cursor-pointer hover:bg-black/85"
+                        >
+                          Maximize
+                        </button>
+                      </div>
+                    )}
+
+                    {msg.file_data && !msg.file_type?.startsWith('image/') && !msg.file_type?.startsWith('video/') && !msg.is_voice && (
+                      <div className="mb-2 flex items-center gap-2.5 p-2 bg-black/20 rounded-xl border border-white/5">
+                        <Paperclip className="w-4 h-4 text-[#20e3a2] flex-shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-[10.5px] font-bold truncate text-white">{msg.file_name}</p>
+                          <a
+                            href={msg.file_data}
+                            download={msg.file_name || 'attachment'}
+                            className="text-[9.5px] text-[#20e3a2] underline hover:opacity-80 mt-0.5 inline-block font-semibold"
+                          >
+                            Download
+                          </a>
+                        </div>
+                      </div>
+                    )}
+
+                    {msg.is_voice && msg.file_data && (
+                      <div className="mb-2 flex items-center gap-3 bg-black/15 rounded-xl px-3 py-2 border border-white/5 min-w-[160px]">
+                        <button
+                          onClick={() => togglePlayAudio(msg)}
+                          className={`w-7.5 h-7.5 rounded-full flex items-center justify-center cursor-pointer transition-transform active:scale-90 ${
+                            isMe ? 'bg-white text-black' : 'bg-[#20e3a2] text-black'
+                          }`}
+                        >
+                          {playingMsgId === msg.id ? (
+                            <Pause className="w-3.5 h-3.5 fill-current" />
+                          ) : (
+                            <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                          )}
+                        </button>
+                        <div className="flex-1">
+                          <p className="text-[10px] font-bold leading-tight">Voice Note</p>
+                          <p className="text-[9px] text-[#8d97ab] font-mono mt-0.5">
+                            {playingMsgId === msg.id ? 'Playing back...' : 'Audio recording'}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 2. Render text / added context / caption SECOND (below attachment) */}
                     {(() => {
                       if (!msg.text) return null;
                       if (msg.text.startsWith('_vyper_deleted_::')) {
@@ -1745,7 +1837,6 @@ export default function ChatScreen({
                           if (localDurations[callId] !== undefined) {
                             durationSec = localDurations[callId];
                           } else if (isEnded) {
-                            // Generate a robust deterministic fallback duration so all ended cards show a duration
                             let hash = 0;
                             for (let i = 0; i < callId.length; i++) {
                               hash = callId.charCodeAt(i) + ((hash << 5) - hash);
@@ -1848,7 +1939,6 @@ export default function ChatScreen({
                           
                           return (
                             <div className="flex flex-col gap-1.5 text-left w-full max-w-full">
-                              {/* Sleek Reply Quote Block */}
                               <div
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1903,82 +1993,6 @@ export default function ChatScreen({
                       return <p className="leading-relaxed break-words whitespace-pre-wrap text-left">{msg.text}</p>;
                     })()}
 
-                    {/* Render attachment image if type matches image */}
-                    {msg.file_data && msg.file_type?.startsWith('image/') && (
-                      <div 
-                        onClick={() => setPreviewAttachment({ url: msg.file_data!, type: msg.file_type!, name: msg.file_name || 'Image' })}
-                        className="mt-2 rounded-xl overflow-hidden max-w-xs border border-white/10 cursor-zoom-in hover:brightness-110 transition-all"
-                        title="Click to view full screen"
-                      >
-                        <img
-                          src={msg.file_data}
-                          alt="Attachment"
-                          className="w-full object-cover max-h-[160px]"
-                          referrerPolicy="no-referrer"
-                        />
-                      </div>
-                    )}
-
-                    {/* Render attachment video if type matches video */}
-                    {msg.file_data && msg.file_type?.startsWith('video/') && (
-                      <div className="mt-2 rounded-xl overflow-hidden max-w-xs border border-white/10 relative group/video">
-                        <video
-                          src={msg.file_data}
-                          className="w-full max-h-[180px] object-cover"
-                          controls
-                          preload="metadata"
-                        />
-                        <button 
-                          type="button"
-                          onClick={() => setPreviewAttachment({ url: msg.file_data!, type: msg.file_type!, name: msg.file_name || 'Video' })}
-                          className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 text-white opacity-0 group-hover/video:opacity-100 transition-opacity text-[10px] font-bold cursor-pointer hover:bg-black/85"
-                        >
-                          Maximize
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Render attachment other files download link */}
-                    {msg.file_data && !msg.file_type?.startsWith('image/') && !msg.file_type?.startsWith('video/') && !msg.is_voice && (
-                      <div className="mt-1.5 flex items-center gap-2.5 p-2 bg-black/20 rounded-xl border border-white/5">
-                        <Paperclip className="w-4 h-4 text-[#20e3a2] flex-shrink-0" />
-                        <div className="min-w-0">
-                          <p className="text-[10.5px] font-bold truncate text-white">{msg.file_name}</p>
-                          <a
-                            href={msg.file_data}
-                            download={msg.file_name || 'attachment'}
-                            className="text-[9.5px] text-[#20e3a2] underline hover:opacity-80 mt-0.5 inline-block font-semibold"
-                          >
-                            Download
-                          </a>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Render Voice note interactive player controls */}
-                    {msg.is_voice && msg.file_data && (
-                      <div className="mt-1.5 flex items-center gap-3 bg-black/15 rounded-xl px-3 py-2 border border-white/5 min-w-[160px]">
-                        <button
-                          onClick={() => togglePlayAudio(msg)}
-                          className={`w-7.5 h-7.5 rounded-full flex items-center justify-center cursor-pointer transition-transform active:scale-90 ${
-                            isMe ? 'bg-white text-black' : 'bg-[#20e3a2] text-black'
-                          }`}
-                        >
-                          {playingMsgId === msg.id ? (
-                            <Pause className="w-3.5 h-3.5 fill-current" />
-                          ) : (
-                            <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
-                          )}
-                        </button>
-                        <div className="flex-1">
-                          <p className="text-[10px] font-bold leading-tight">Voice Note</p>
-                          <p className="text-[9px] text-[#8d97ab] font-mono mt-0.5">
-                            {playingMsgId === msg.id ? 'Playing back...' : 'Audio recording'}
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
                     {/* Message metadata timestamp indicator and read receipts */}
                     <div className="mt-1.5 flex items-center justify-end gap-1 text-[9px] text-white/40 font-mono text-right font-medium leading-none">
                       {starredMsgIds.includes(msg.id) && (
@@ -1987,7 +2001,9 @@ export default function ChatScreen({
                       <span>{formatMsgTime(msg.created_at)}</span>
                       {isMe && (
                         <span className="inline-flex items-center">
-                          {msgStatus === 'read' ? (
+                          {msg.is_pending || getOfflineQueue().some((q) => q.id === msg.id) ? (
+                            <Clock className="w-3.5 h-3.5 text-amber-400/90 animate-pulse" title="Offline / Pending send" />
+                          ) : msgStatus === 'read' ? (
                             <CheckCheck className="w-3.5 h-3.5 text-[#20e3a2]" title="Read" />
                           ) : isUserOnline(peerProfile) ? (
                             <CheckCheck className="w-3.5 h-3.5 text-white/40" title="Delivered" />
@@ -2367,16 +2383,7 @@ export default function ChatScreen({
           </div>
         ) : (
           /* Text area / message input controls flow */
-          <form onSubmit={handleSendMessage} className="flex items-center gap-2.5">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="w-10.5 h-10.5 rounded-2xl bg-[#161d28] border border-[#212a38] flex items-center justify-center text-[#8d97ab] hover:text-[#eef1f6] cursor-pointer transition-colors active:scale-95"
-              title="Upload file or photo"
-            >
-              <Paperclip className="w-4.5 h-4.5" />
-            </button>
-
+          <form onSubmit={handleSendMessage} className="flex items-center gap-2">
             <div className="flex-1 flex items-center bg-[#161d28] border border-[#212a38] focus-within:border-[#7c5cff] rounded-2xl px-3.5 py-2.5 transition-colors">
               <input
                 type="text"
@@ -2388,11 +2395,20 @@ export default function ChatScreen({
               />
             </div>
 
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-10 h-10 rounded-2xl bg-[#161d28] border border-[#212a38] flex items-center justify-center text-[#8d97ab] hover:text-[#eef1f6] cursor-pointer transition-colors active:scale-95 shrink-0"
+              title="Upload file or photo"
+            >
+              <Paperclip className="w-4.5 h-4.5" />
+            </button>
+
             {text.trim() || fileBase64 || voiceBase64 ? (
               /* Render standard Send icon button if text or attachment exists */
               <button
                 type="submit"
-                className="w-10.5 h-10.5 rounded-2xl bg-gradient-to-br from-[#7c5cff] to-[#4a2fd1] text-white flex items-center justify-center cursor-pointer hover:opacity-90 active:scale-95 transition-all shadow-[0_6px_15px_-4px_rgba(124,92,255,0.4)]"
+                className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#7c5cff] to-[#4a2fd1] text-white flex items-center justify-center cursor-pointer hover:opacity-90 active:scale-95 transition-all shadow-[0_6px_15px_-4px_rgba(124,92,255,0.4)] shrink-0"
               >
                 <Send className="w-4.5 h-4.5 rotate-45 ml-[1px]" />
               </button>
@@ -2401,7 +2417,7 @@ export default function ChatScreen({
               <button
                 type="button"
                 onClick={startRecording}
-                className="w-10.5 h-10.5 rounded-2xl bg-[#161d28] border border-[#212a38] text-[#20e3a2] hover:bg-[#20e3a2]/5 flex items-center justify-center cursor-pointer transition-all active:scale-95"
+                className="w-10 h-10 rounded-2xl bg-[#161d28] border border-[#212a38] text-[#20e3a2] hover:bg-[#20e3a2]/5 flex items-center justify-center cursor-pointer transition-all active:scale-95 shrink-0"
                 title="Record voice note"
               >
                 <Mic className="w-4.5 h-4.5" />
@@ -3256,7 +3272,7 @@ export default function ChatScreen({
                 </div>
 
                 {/* Online status tag */}
-                <span className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider border whitespace-nowrap inline-block truncate max-w-full ${
+                <span className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider border whitespace-nowrap overflow-hidden text-ellipsis inline-block truncate max-w-[180px] sm:max-w-[220px] ${
                   isUserOnline(selectedUserProfile) 
                     ? 'bg-emerald-500/10 text-[#20e3a2] border-emerald-500/20' 
                     : 'bg-white/5 text-[#8d97ab] border-white/5'

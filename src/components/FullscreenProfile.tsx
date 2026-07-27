@@ -220,7 +220,7 @@ export default function FullscreenProfile({
   const coverUrl = isGroup ? (data as Group)?.cover_url : parsedAbout?.coverUrl;
 
   return (
-    <div className="fixed inset-0 bg-[#080b10] z-50 flex flex-col md:flex-row animate-fade-in text-left overflow-hidden">
+    <div className="fixed inset-0 bg-[#080b10] z-50 flex flex-col md:flex-row animate-fade-in text-left overflow-hidden screen-gpu" style={{ willChange: 'transform', transform: 'translateZ(0)' }}>
       {/* Back button and screen header */}
       <div className="absolute top-[calc(var(--safe-top)+12px)] left-4 z-50">
         <button
@@ -248,7 +248,7 @@ export default function FullscreenProfile({
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#080b10]/40 to-[#080b10]" />
           
           {/* Badge at top right */}
-          <span className={`absolute top-[calc(var(--safe-top)+12px)] right-4 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${badgeStyle} backdrop-blur-sm shadow-md whitespace-nowrap truncate max-w-[200px]`}>
+          <span className={`absolute top-[calc(var(--safe-top)+12px)] right-4 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${badgeStyle} backdrop-blur-sm shadow-md whitespace-nowrap overflow-hidden text-ellipsis truncate max-w-[160px] sm:max-w-[220px]`}>
             {badgeText}
           </span>
         </div>
@@ -328,9 +328,9 @@ export default function FullscreenProfile({
             </p>
 
             {parsedAbout?.thinking && (
-              <div className="mt-2.5 bg-[#20e3a2]/10 border border-[#20e3a2]/30 px-3 py-1.5 rounded-xl text-xs font-semibold text-[#20e3a2] flex items-center gap-2 max-w-full">
+              <div className="mt-2.5 bg-[#20e3a2]/10 border border-[#20e3a2]/30 px-3 py-1.5 rounded-xl text-xs font-semibold text-[#20e3a2] flex items-center gap-2 max-w-full overflow-hidden">
                 <span className="shrink-0 text-sm">💭</span>
-                <span className="text-white leading-tight break-words font-sans">{parsedAbout.thinking}</span>
+                <span className="text-white leading-tight font-sans whitespace-nowrap overflow-hidden text-ellipsis truncate block min-w-0 flex-1">{parsedAbout.thinking}</span>
               </div>
             )}
           </div>
@@ -523,7 +523,7 @@ export default function FullscreenProfile({
 
                     {/* Right online status marker */}
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider border whitespace-nowrap truncate max-w-[160px] inline-block ${
+                      <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider border whitespace-nowrap overflow-hidden text-ellipsis truncate max-w-[120px] sm:max-w-[160px] inline-block ${
                         isUserOnline(member) 
                           ? 'bg-emerald-500/10 text-[#20e3a2] border-emerald-500/20' 
                           : 'bg-white/5 text-[#8d97ab] border-white/5'
