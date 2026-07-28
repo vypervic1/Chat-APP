@@ -5,12 +5,13 @@ import {
   ArrowLeft, Phone, Video, Paperclip, Send, Camera, Mic, Square, Trash, Play, Pause, Smile, X, 
   Check, CheckCheck, CornerUpLeft, Pin, Shield, MoreVertical, Image, Palette, FileText, 
   ExternalLink, Trash2, PlusCircle, CheckCircle, Info, Users, Download, Link, UserPlus, UserMinus,
-  RotateCw, Type, PenTool, Sparkles, Forward, PhoneOff, Upload, Star, Copy, Edit3, Ban, ChevronDown, Clock
+  RotateCw, Type, PenTool, Sparkles, Forward, PhoneOff, Upload, Star, Copy, Edit3, Ban, ChevronDown, Clock, FastForward
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { isUserOnline, formatLastSeen, getContactDisplayName, parseProfileAbout } from '../utils/customNames';
 import { globalAudioPlayer, playRecordSound } from '../utils/audioPlayer';
 import { queueOfflineMessage, getOfflineQueue, flushOfflineQueue } from '../utils/offlineSync';
+import { AudioWaveformCanvas } from './AudioWaveformCanvas';
 
 function generateUUID() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -1156,8 +1157,23 @@ export default function ChatScreen({
 
       mediaRecorder.start();
       setIsRecording(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error starting voice note recording:', err);
+      setIsRecording(false);
+      setRecordingSeconds(0);
+      const isPermissionDenied =
+        err?.name === 'NotAllowedError' ||
+        err?.name === 'PermissionDeniedError' ||
+        err?.message?.includes('Permission denied') ||
+        err?.message?.includes('permission') ||
+        err?.name === 'NotFoundError' ||
+        err?.name === 'DevicesNotFoundError';
+
+      if (isPermissionDenied) {
+        showLocalToast('⚠️ Microphone access denied. Please allow microphone permissions in browser.');
+      } else {
+        showLocalToast('⚠️ Unable to access microphone for voice recording.');
+      }
     }
   };
 
@@ -1181,7 +1197,22 @@ export default function ChatScreen({
   // Play audio file using persistent global audio player
   const togglePlayAudio = (message: Message) => {
     if (message.file_data) {
-      globalAudioPlayer.togglePlay(message.id, message.file_data);
+      const senderProfile = allProfiles.find((p) => p.id === message.sender_id);
+      const senderName = message.sender_id === currentUser.id 
+        ? 'You' 
+        : getContactDisplayName(senderProfile);
+      
+      const chatTitle = currentGroup 
+        ? currentGroup.name 
+        : isMeSpace 
+          ? 'Me' 
+          : peerProfile?.display_name || peerProfile?.username || 'Operator';
+
+      globalAudioPlayer.togglePlay(message.id, message.file_data, {
+        title: message.file_name || `Voice Note • ${chatTitle}`,
+        senderName,
+        chatId,
+      });
     }
   };
 
@@ -1780,28 +1811,82 @@ export default function ChatScreen({
                       </div>
                     )}
 
-                    {msg.is_voice && msg.file_data && (
-                      <div className="mb-2 flex items-center gap-3 bg-black/15 rounded-xl px-3 py-2 border border-white/5 min-w-[160px]">
-                        <button
-                          onClick={() => togglePlayAudio(msg)}
-                          className={`w-7.5 h-7.5 rounded-full flex items-center justify-center cursor-pointer transition-transform active:scale-90 ${
-                            isMe ? 'bg-white text-black' : 'bg-[#20e3a2] text-black'
-                          }`}
-                        >
-                          {playingMsgId === msg.id ? (
-                            <Pause className="w-3.5 h-3.5 fill-current" />
-                          ) : (
-                            <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
-                          )}
-                        </button>
-                        <div className="flex-1">
-                          <p className="text-[10px] font-bold leading-tight">Voice Note</p>
-                          <p className="text-[9px] text-[#8d97ab] font-mono mt-0.5">
-                            {playingMsgId === msg.id ? 'Playing back...' : 'Audio recording'}
-                          </p>
+                    {msg.is_voice && msg.file_data && (() => {
+                      const isThisPlaying = globalAudioPlayer.getCurrentMsgId() === msg.id && globalAudioPlayer.isPlaying();
+                      const currentTime = isThisPlaying ? globalAudioPlayer.getCurrentTime() : 0;
+                      const duration = isThisPlaying ? globalAudioPlayer.getDuration() : 0;
+                      const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
+                      const currentRate = globalAudioPlayer.getPlaybackRate();
+
+                      const formatSecs = (sec: number) => {
+                        if (!isFinite(sec) || isNaN(sec) || sec < 0) return '0:00';
+                        const m = Math.floor(sec / 60);
+                        const s = Math.floor(sec % 60);
+                        return `${m}:${s < 10 ? '0' : ''}${s}`;
+                      };
+
+                      return (
+                        <div className="mb-2 flex flex-col gap-1.5 bg-black/20 rounded-xl p-2.5 border border-white/5 min-w-[200px] sm:min-w-[240px]">
+                          <div className="flex items-center gap-2.5">
+                            <button
+                              onClick={() => togglePlayAudio(msg)}
+                              type="button"
+                              className={`w-8 h-8 rounded-full flex items-center justify-center cursor-pointer transition-transform active:scale-90 shrink-0 ${
+                                isMe ? 'bg-white text-black shadow-md' : 'bg-[#20e3a2] text-black shadow-md'
+                              }`}
+                              title={isThisPlaying ? 'Pause voice note' : 'Play voice note'}
+                            >
+                              {isThisPlaying ? (
+                                <Pause className="w-4 h-4 fill-current" />
+                              ) : (
+                                <Play className="w-4 h-4 fill-current ml-0.5" />
+                              )}
+                            </button>
+
+                            {/* Canvas Waveform Visualizer */}
+                            <div className="flex-1 min-w-0">
+                              <AudioWaveformCanvas
+                                isPlaying={isThisPlaying}
+                                progress={progress}
+                                barCount={24}
+                                height={24}
+                                barWidth={3}
+                                barGap={2}
+                                activeColor={isMe ? '#ffffff' : '#20e3a2'}
+                                inactiveColor="rgba(255, 255, 255, 0.25)"
+                                playbackRate={currentRate}
+                                onSeek={(r) => {
+                                  if (isThisPlaying && duration > 0) {
+                                    globalAudioPlayer.seek(r * duration);
+                                  } else {
+                                    togglePlayAudio(msg);
+                                  }
+                                }}
+                              />
+                            </div>
+
+                            {/* Speed Switcher Button (1x, 1.5x, 2x) */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                globalAudioPlayer.cyclePlaybackRate();
+                              }}
+                              className="px-1.5 py-0.5 rounded-lg bg-black/30 hover:bg-black/50 text-[9.5px] font-extrabold text-[#20e3a2] border border-white/10 transition-colors shrink-0 cursor-pointer flex items-center gap-0.5"
+                              title="Cycle speed (1x, 1.5x, 2x)"
+                            >
+                              <FastForward className="w-2.5 h-2.5" />
+                              <span>{currentRate}x</span>
+                            </button>
+                          </div>
+
+                          <div className="flex items-center justify-between text-[9px] font-mono text-white/50 px-0.5">
+                            <span>{isThisPlaying ? formatSecs(currentTime) : 'Voice Note'}</span>
+                            {isThisPlaying && duration > 0 && <span>/ {formatSecs(duration)}</span>}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
                     {/* 2. Render text / added context / caption SECOND (below attachment) */}
                     {(() => {
@@ -2101,7 +2186,7 @@ export default function ChatScreen({
                     highlightedMsgId === msg.id ? 'bg-[#20e3a2]/5' : ''
                   }`}
                 >
-                <div className="relative flex items-center w-full min-h-[44px]">
+                <div className="relative flex items-center w-full min-h-[44px] overflow-hidden">
                   {/* Behind-the-scenes swipe reply indicator */}
                   <div className={`absolute top-1/2 -translate-y-1/2 flex items-center gap-1 text-[#20e3a2] pointer-events-none opacity-0 group-hover:opacity-60 transition-opacity z-0 ${
                     isMe ? 'right-3 flex-row-reverse' : 'left-3'
@@ -2197,36 +2282,101 @@ export default function ChatScreen({
       </div>
 
       {/* Live Active Voice Note preview draft pane */}
-      {voiceBlobUrl && (
-        <div className="bg-[#161d28] border-t border-[#212a38] p-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-[#20e3a2]/15 text-[#20e3a2] flex items-center justify-center animate-pulse">
-              <Mic className="w-4 h-4" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-white">Voice note draft</p>
-              <p className="text-[10px] text-[#8d97ab]">Ready to establish link</p>
-            </div>
-          </div>
+      {voiceBlobUrl && (() => {
+        const draftMsgId = 'voice_note_draft_preview';
+        const isDraftPlaying = globalAudioPlayer.getCurrentMsgId() === draftMsgId && globalAudioPlayer.isPlaying();
+        const currentTime = isDraftPlaying ? globalAudioPlayer.getCurrentTime() : 0;
+        const duration = isDraftPlaying ? globalAudioPlayer.getDuration() : 0;
+        const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
+        const currentRate = globalAudioPlayer.getPlaybackRate();
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={cancelVoiceNote}
-              className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-[#ff5470] cursor-pointer"
-              title="Delete draft"
-            >
-              <Trash className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => handleSendMessage()}
-              disabled={sending}
-              className="p-2.5 rounded-xl bg-[#20e3a2] hover:bg-[#20e3a2]/95 text-black font-bold text-xs cursor-pointer"
-            >
-              Send Note
-            </button>
+        const handleToggleDraftPlay = () => {
+          const src = voiceBase64 || voiceBlobUrl;
+          if (src) {
+            globalAudioPlayer.togglePlay(draftMsgId, src, {
+              title: 'Voice Note Draft',
+              senderName: 'You',
+              chatId,
+            });
+          }
+        };
+
+        return (
+          <div className="bg-[#161d28] border-t border-[#212a38] p-3 flex items-center justify-between gap-3 animate-fade-in">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={handleToggleDraftPlay}
+                className="w-8 h-8 rounded-full bg-[#20e3a2] text-black flex items-center justify-center cursor-pointer shrink-0 shadow-md hover:scale-105 active:scale-95 transition-all"
+                title={isDraftPlaying ? 'Pause draft' : 'Play draft'}
+              >
+                {isDraftPlaying ? (
+                  <Pause className="w-4 h-4 fill-current" />
+                ) : (
+                  <Play className="w-4 h-4 fill-current ml-0.5" />
+                )}
+              </button>
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-white truncate">Voice note draft</span>
+                  <span className="text-[10px] text-[#20e3a2] font-mono font-bold">({recordingSeconds > 0 ? `${recordingSeconds}s` : 'Ready'})</span>
+                </div>
+                <div className="mt-1">
+                  <AudioWaveformCanvas
+                    isPlaying={isDraftPlaying}
+                    progress={progress}
+                    barCount={20}
+                    height={20}
+                    barWidth={3}
+                    barGap={2}
+                    activeColor="#20e3a2"
+                    inactiveColor="rgba(255, 255, 255, 0.25)"
+                    playbackRate={currentRate}
+                    onSeek={(r) => {
+                      if (isDraftPlaying && duration > 0) {
+                        globalAudioPlayer.seek(r * duration);
+                      } else {
+                        handleToggleDraftPlay();
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  globalAudioPlayer.cyclePlaybackRate();
+                }}
+                className="px-2 py-1 rounded-lg bg-black/30 hover:bg-black/50 text-[10px] font-extrabold text-[#20e3a2] border border-white/10 transition-colors shrink-0 cursor-pointer flex items-center gap-0.5"
+                title="Cycle speed (1x, 1.5x, 2x)"
+              >
+                <FastForward className="w-3 h-3" />
+                <span>{currentRate}x</span>
+              </button>
+
+              <button
+                onClick={cancelVoiceNote}
+                className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-[#ff5470] cursor-pointer"
+                title="Delete draft"
+              >
+                <Trash className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => handleSendMessage()}
+                disabled={sending}
+                className="p-2.5 rounded-xl bg-[#20e3a2] hover:bg-[#20e3a2]/95 text-black font-bold text-xs cursor-pointer shadow-md"
+              >
+                Send Note
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Attachment upload draft indicator overlay */}
       {fileBase64 && !voiceBase64 && (

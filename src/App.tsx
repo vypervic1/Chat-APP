@@ -15,6 +15,7 @@ import SearchScreen from './components/SearchScreen';
 import SettingsScreen from './components/SettingsScreen';
 import CallOverlay from './components/CallOverlay';
 import FullscreenProfile from './components/FullscreenProfile';
+import { GlobalAudioBanner } from './components/GlobalAudioBanner';
 import { saveFileToLocalStorage } from './utils/indexedDB';
 import { flushOfflineQueue } from './utils/offlineSync';
 
@@ -691,119 +692,17 @@ export default function App() {
     showToast('Sent');
   };
 
-  // Trigger beautiful heads-up notification drawer and sound for background messages or mentions
-  const triggerPushNotification = (newMsg: Message) => {
-    if (!currentUserRef.current) return;
-    if (newMsg.sender_id === currentUserRef.current.id) return;
-    if (newMsg.chat_id === selectedChatIdRef.current) return;
-
-    const sender = allProfilesRef.current.find((p) => p.id === newMsg.sender_id);
-    const senderName = sender?.display_name || sender?.username || 'Somebody';
-    const avatarUrl = sender?.avatar_url;
-
-    const isDM = newMsg.chat_id.startsWith('dm:');
-    if (isDM && newMsg.chat_id !== 'dm:system:test') {
-      const parts = newMsg.chat_id.split(':');
-      const u1 = parts[1];
-      const u2 = parts[2];
-      if (currentUserRef.current && currentUserRef.current.id !== u1 && currentUserRef.current.id !== u2) {
-        return;
-      }
-    }
-
-    const isGeneral = newMsg.chat_id === 'general';
-    const isMention = isGeneral && 
-                      newMsg.text && 
-                      currentUserRef.current?.username && 
-                      newMsg.text.toLowerCase().includes(`@${currentUserRef.current.username.toLowerCase()}`);
-
-    // Play sound and vibrate for DMs, General chat messages, or mentions
-    if (isDM || isGeneral || isMention) {
-      // Vibrate if supported
-      if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        try {
-          navigator.vibrate([100, 50, 100]);
-        } catch (e) {}
-      }
-
-      // Play sound
-      try {
-        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-        if (AudioContext) {
-          const ctx = new AudioContext();
-          const osc1 = ctx.createOscillator();
-          const osc2 = ctx.createOscillator();
-          const gain = ctx.createGain();
-          
-          osc1.type = 'sine';
-          osc1.frequency.setValueAtTime(587.33, ctx.currentTime);
-          osc1.frequency.exponentialRampToValueAtTime(880.00, ctx.currentTime + 0.15);
-          
-          osc2.type = 'sine';
-          osc2.frequency.setValueAtTime(698.46, ctx.currentTime + 0.05);
-          osc2.frequency.exponentialRampToValueAtTime(1174.66, ctx.currentTime + 0.2);
-          
-          gain.gain.setValueAtTime(0.12, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-          
-          osc1.connect(gain);
-          osc2.connect(gain);
-          gain.connect(ctx.destination);
-          
-          osc1.start();
-          osc2.start();
-          osc1.stop(ctx.currentTime + 0.35);
-          osc2.stop(ctx.currentTime + 0.35);
-        }
-      } catch (audioErr) {}
-
-      // ONLY deliver visual notification if user is NOT on the chat list page!
-      if (activeScreenRef.current !== 'chatList') {
-        const notificationTitle = isDM 
-          ? `New message from ${senderName}` 
-          : isMention 
-            ? `${senderName} mentioned you in General`
-            : `New message in #General`;
-        const notificationBody = newMsg.is_voice 
-          ? '🎤 Sent a voice note' 
-          : newMsg.text || 'Sent an attachment 📎';
-
-        const newNotif: PushNotification = {
-          id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9),
-          chatId: newMsg.chat_id,
-          senderId: newMsg.sender_id,
-          senderName,
-          title: notificationTitle,
-          body: notificationBody,
-          isMention: !!isMention,
-          timestamp: new Date().toISOString(),
-        };
-
-        setNotifications((prev) => [newNotif, ...prev].slice(0, 20));
-        setHeadsUpNotification(newNotif);
-        setShowHeadsUpReply(false);
-        setHeadsUpReplyText('');
-
-        // Auto-dismiss heads-up banner after 6 seconds
-        setTimeout(() => {
-          setHeadsUpNotification((current) => current?.id === newNotif.id ? null : current);
-        }, 6000);
-
-        // System notification
-        displayLocalPushNotification(notificationTitle, notificationBody, avatarUrl);
-      }
-    }
-  };
-
   const chatUpdatesChannelRef = useRef<any>(null);
 
   const currentUserRef = useRef<Profile | null>(null);
   const selectedChatIdRef = useRef<string | null>(null);
   const allProfilesRef = useRef<Profile[]>([]);
+  const groupsRef = useRef<Group[]>([]);
   const activeCallRef = useRef<Call | null>(null);
   const isInitiatingCallRef = useRef<boolean>(false);
   const activeScreenRef = useRef<'chatList' | 'chat' | 'search' | 'settings'>('chatList');
   const sessionStartRef = useRef<number>(Date.now());
+  const processedPushNotifIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     currentUserRef.current = currentUser;
@@ -816,6 +715,149 @@ export default function App() {
   useEffect(() => {
     allProfilesRef.current = allProfiles;
   }, [allProfiles]);
+
+  useEffect(() => {
+    groupsRef.current = groups;
+  }, [groups]);
+
+  useEffect(() => {
+    activeCallRef.current = activeCall;
+  }, [activeCall]);
+
+  useEffect(() => {
+    activeScreenRef.current = activeScreen;
+  }, [activeScreen]);
+
+  // Trigger beautiful heads-up notification drawer and sound for background messages or mentions
+  const triggerPushNotification = (newMsg: Message) => {
+    if (!currentUserRef.current) return;
+    if (!newMsg || !newMsg.id) return;
+
+    // Avoid duplicate notification triggers for the same message ID
+    if (processedPushNotifIdsRef.current.has(newMsg.id)) return;
+
+    // Ignore messages sent by current user or in current active chat room
+    if (newMsg.sender_id === currentUserRef.current.id) return;
+    if (newMsg.chat_id === selectedChatIdRef.current) return;
+
+    // Ignore messages created prior to current session boot (e.g. historical messages or initial sync batch)
+    const msgTime = new Date(newMsg.created_at || Date.now()).getTime();
+    if (!isNaN(msgTime) && msgTime < sessionStartRef.current - 5000) {
+      return;
+    }
+
+    // Privacy & Relevance Filters
+    const isDM = newMsg.chat_id.startsWith('dm:');
+    let isRecipientOfDM = false;
+    if (isDM && newMsg.chat_id !== 'dm:system:test') {
+      const parts = newMsg.chat_id.split(':');
+      const u1 = parts[1];
+      const u2 = parts[2];
+      if (currentUserRef.current.id === u1 || currentUserRef.current.id === u2) {
+        isRecipientOfDM = true;
+      } else {
+        return; // Ignore other users' private DMs completely
+      }
+    }
+
+    const isGroup = newMsg.chat_id.startsWith('group:');
+    if (isGroup) {
+      const targetGroup = groupsRef.current.find((g) => g.id === newMsg.chat_id);
+      if (!targetGroup || !targetGroup.members || !targetGroup.members.includes(currentUserRef.current.id)) {
+        return; // Ignore groups user is not a member of
+      }
+    }
+
+    const isMention = !!(
+      newMsg.text && 
+      currentUserRef.current?.username && 
+      newMsg.text.toLowerCase().includes(`@${currentUserRef.current.username.toLowerCase()}`)
+    );
+
+    // CRITICAL: Only notify if it is a DM sent to user or an explicit @mention in a group/general chat!
+    const shouldNotify = isRecipientOfDM || isMention;
+
+    if (!shouldNotify) {
+      return;
+    }
+
+    processedPushNotifIdsRef.current.add(newMsg.id);
+
+    const sender = allProfilesRef.current.find((p) => p.id === newMsg.sender_id);
+    const senderName = sender?.display_name || sender?.username || 'Somebody';
+    const avatarUrl = sender?.avatar_url;
+
+    // Vibrate if supported
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+      try {
+        navigator.vibrate([100, 50, 100]);
+      } catch (e) {}
+    }
+
+    // Play sound
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContext) {
+        const ctx = new AudioContext();
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+        
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(587.33, ctx.currentTime);
+        osc1.frequency.exponentialRampToValueAtTime(880.00, ctx.currentTime + 0.15);
+        
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(698.46, ctx.currentTime + 0.05);
+        osc2.frequency.exponentialRampToValueAtTime(1174.66, ctx.currentTime + 0.2);
+        
+        gain.gain.setValueAtTime(0.12, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+        
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc1.start();
+        osc2.start();
+        osc1.stop(ctx.currentTime + 0.35);
+        osc2.stop(ctx.currentTime + 0.35);
+      }
+    } catch (audioErr) {}
+
+    const notificationTitle = isDM 
+      ? `New message from ${senderName}` 
+      : isMention 
+        ? `${senderName} mentioned you`
+        : `New message`;
+    const notificationBody = newMsg.is_voice 
+      ? '🎤 Sent a voice note' 
+      : newMsg.text || 'Sent an attachment 📎';
+
+    const newNotif: PushNotification = {
+      id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9),
+      chatId: newMsg.chat_id,
+      senderId: newMsg.sender_id,
+      senderName,
+      title: notificationTitle,
+      body: notificationBody,
+      isMention: !!isMention,
+      timestamp: new Date().toISOString(),
+    };
+
+    setNotifications((prev) => [newNotif, ...prev].slice(0, 20));
+    setHeadsUpNotification(newNotif);
+    setShowHeadsUpReply(false);
+    setHeadsUpReplyText('');
+
+    // Auto-dismiss heads-up banner after 6 seconds
+    setTimeout(() => {
+      setHeadsUpNotification((current) => current?.id === newNotif.id ? null : current);
+    }, 6000);
+
+    // System notification
+    displayLocalPushNotification(notificationTitle, notificationBody, avatarUrl);
+  };
 
   useEffect(() => {
     activeCallRef.current = activeCall;
@@ -2089,12 +2131,12 @@ export default function App() {
   };
 
   return (
-    <div className="w-full h-full min-h-screen flex items-center justify-center p-2 sm:p-4 bg-[#05070a] overflow-x-hidden">
-      <div className="phone relative w-full max-w-[420px] h-[100dvh] sm:h-[844px] max-h-[100dvh] sm:max-h-[920px] bg-[#080b10] rounded-[36px] sm:rounded-[52px] border-[6px] sm:border-[10px] border-[#131922] shadow-[0_0_0_2px_#232a35,0_25px_60px_-15px_rgba(0,0,0,0.85),0_0_100px_-20px_rgba(124,92,255,0.3)] overflow-hidden flex flex-col mx-auto ring-1 ring-white/10">
-      {/* iOS Dynamic Island Component */}
-      <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-[1000] flex flex-col items-center pointer-events-auto">
-        <AnimatePresence mode="wait">
-          {headsUpNotification ? (
+    <div className="w-full h-full min-h-[100dvh] h-[100dvh] max-h-[100dvh] flex items-center justify-center bg-[#05070a] overflow-hidden overflow-x-hidden select-none relative">
+      <div className="phone relative w-full max-w-lg md:max-w-xl h-full h-[100dvh] max-h-[100dvh] bg-[#080b10] sm:border-x sm:border-[#1e2634] shadow-2xl overflow-hidden flex flex-col mx-auto">
+      {/* iOS Dynamic Island Component (ONLY visible when a new incoming notification arrives) */}
+      {headsUpNotification && (
+        <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-[1000] flex flex-col items-center pointer-events-auto">
+          <AnimatePresence mode="wait">
             <motion.div
               key="expanded-island-notification"
               initial={{ width: 112, height: 24, borderRadius: 24, opacity: 0.8, scale: 0.9 }}
@@ -2180,43 +2222,9 @@ export default function App() {
                 </form>
               )}
             </motion.div>
-          ) : (
-            <motion.div
-              key="compact-island"
-              initial={{ width: 110, height: 26, borderRadius: 20 }}
-              animate={{ width: activeCall ? 140 : (getUnifiedFeed().length > 0 ? 125 : 110), height: 26, borderRadius: 20 }}
-              exit={{ opacity: 0 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              onClick={() => {
-                if (getUnifiedFeed().length > 0) {
-                  setShowNotificationCenter(true);
-                }
-              }}
-              className="bg-black border border-white/25 rounded-full px-3 py-1 flex items-center justify-center gap-2 shadow-[0_4px_20px_rgba(0,0,0,0.85)] cursor-pointer hover:border-white/40 transition-all select-none group ring-1 ring-white/10"
-            >
-              {activeCall ? (
-                <div className="flex items-center justify-between w-full text-white text-[10px] font-bold">
-                  <div className="flex items-center gap-1.5 text-[#20e3a2]">
-                    <div className="w-2 h-2 rounded-full bg-[#20e3a2] animate-pulse" />
-                    <span>Call Active</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center gap-1.5 w-full">
-                  {getUnifiedFeed().length > 0 ? (
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-[#20e3a2] animate-ping" />
-                      <span className="text-[10px] font-black text-[#20e3a2] font-mono tracking-tight">{getUnifiedFeed().length} new</span>
-                    </div>
-                  ) : (
-                    <div className="w-1.5 h-1.5 rounded-full bg-white/20" />
-                  )}
-                </div>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+          </AnimatePresence>
+        </div>
+      )}
 
       {/* Sleek, Realistic Smartphone Status Bar */}
       <div 
@@ -2343,6 +2351,23 @@ export default function App() {
           <AuthScreen onAuthComplete={(profile) => setCurrentUser(profile)} />
         ) : (
           <>
+            {/* Global Persistent Audio Player Banner across screens */}
+            <GlobalAudioBanner
+              currentActiveScreen={activeScreen}
+              currentChatId={selectedChatId}
+              onNavigateToChat={(targetChatId) => {
+                const targetPeer = allProfiles.find((p) => {
+                  const sortedIds = [currentUser.id, p.id].sort();
+                  return `dm:${sortedIds[0]}:${sortedIds[1]}` === targetChatId;
+                });
+                setSelectedChatId(targetChatId);
+                if (targetPeer) {
+                  setSelectedPeerProfile(targetPeer);
+                }
+                setActiveScreen('chat');
+              }}
+            />
+
             {/* Navigational Screens */}
             {activeScreen === 'chatList' && (
               <ChatListScreen
