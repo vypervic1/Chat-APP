@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import NotificationCard from './components/NotificationCard';
 import { PushNotification, Profile, Message, Call, Group, ThemeConfig } from './types';
-import { Bell, AtSign, Smartphone, MessageSquare, X, Send, Loader2, Sparkles, AlertTriangle } from 'lucide-react';
+import { Bell, AtSign, Smartphone, MessageSquare, X, Send, Loader2, Sparkles, AlertTriangle, Phone, Users, Settings } from 'lucide-react';
 import { supabase } from './supabase';
 import { motion, AnimatePresence } from 'motion/react';
 import { displayLocalPushNotification, requestNotificationPermission } from './notifications';
@@ -13,6 +13,7 @@ import ChatListScreen from './components/ChatListScreen';
 import ChatScreen from './components/ChatScreen';
 import SearchScreen from './components/SearchScreen';
 import SettingsScreen from './components/SettingsScreen';
+import CallsScreen from './components/CallsScreen';
 import CallOverlay from './components/CallOverlay';
 import FullscreenProfile from './components/FullscreenProfile';
 import { GlobalAudioBanner } from './components/GlobalAudioBanner';
@@ -67,7 +68,7 @@ export default function App() {
   const [callHistory, setCallHistory] = useState<Call[]>([]);
 
   const [appTheme, setAppTheme] = useState<string>(() => {
-    return localStorage.getItem('vypervic_app_theme') || 'cosmic';
+    return localStorage.getItem('vypervic_app_theme') || 'liquid-glass';
   });
 
   const applyAppTheme = (theme: string) => {
@@ -352,7 +353,7 @@ export default function App() {
   };
 
   // App navigation state
-  const [activeScreen, setActiveScreen] = useState<'chatList' | 'chat' | 'search' | 'settings'>('chatList');
+  const [activeScreen, setActiveScreen] = useState<'chatList' | 'chat' | 'search' | 'settings' | 'calls'>('chatList');
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [selectedPeerProfile, setSelectedPeerProfile] = useState<Profile | undefined>(undefined);
   const [selectedTargetMsgId, setSelectedTargetMsgId] = useState<string | null>(null);
@@ -700,7 +701,7 @@ export default function App() {
   const groupsRef = useRef<Group[]>([]);
   const activeCallRef = useRef<Call | null>(null);
   const isInitiatingCallRef = useRef<boolean>(false);
-  const activeScreenRef = useRef<'chatList' | 'chat' | 'search' | 'settings'>('chatList');
+  const activeScreenRef = useRef<'chatList' | 'chat' | 'search' | 'settings' | 'calls'>('chatList');
   const sessionStartRef = useRef<number>(Date.now());
   const processedPushNotifIdsRef = useRef<Set<string>>(new Set());
 
@@ -2494,6 +2495,16 @@ export default function App() {
               />
             )}
 
+            {activeScreen === 'calls' && (
+              <CallsScreen
+                currentUser={currentUser}
+                allProfiles={allProfiles}
+                callHistory={callHistory}
+                onInitiateCall={handleInitiateCall}
+                onViewProfileDetail={(type, data) => setActiveProfileView({ type, data })}
+              />
+            )}
+
             {activeScreen === 'settings' && (
               <SettingsScreen
                 currentUser={currentUser}
@@ -2542,6 +2553,92 @@ export default function App() {
                 onUpdateProfile={(updated) => setCurrentUser(updated)}
                 onToast={showToast}
               />
+            )}
+
+            {/* Floating Pill Navigation Bar (Liquid Glass or Neumorphism based on theme) */}
+            {(activeScreen === 'chatList' || activeScreen === 'calls' || activeScreen === 'search') && !activeProfileView && !showNotificationCenter && (
+              <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[92%] max-w-sm">
+                {(() => {
+                  const isLiquidGlassTheme = appTheme === 'liquid-glass' || appTheme === 'light-liquid-glass';
+                  const isLight = appTheme.startsWith('light');
+
+                  const containerClass = isLiquidGlassTheme
+                    ? isLight
+                      ? 'bg-white/75 backdrop-blur-3xl border border-white/80 shadow-[0_16px_40px_rgba(0,0,0,0.12),inset_0_1.5px_2px_rgba(255,255,255,0.95)]'
+                      : 'bg-slate-950/60 backdrop-blur-3xl border border-white/20 shadow-[0_16px_48px_rgba(0,0,0,0.6),inset_0_1.5px_2px_rgba(255,255,255,0.35)]'
+                    : isLight
+                      ? 'bg-[#e6ecf5] border border-white/80 shadow-[8px_8px_20px_rgba(163,177,198,0.7),-6px_-6px_16px_rgba(255,255,255,0.95)]'
+                      : 'bg-[#121824] border border-white/10 shadow-[8px_8px_22px_rgba(0,0,0,0.75),-6px_-6px_16px_rgba(255,255,255,0.05)]';
+
+                  const getButtonClass = (screen: 'chatList' | 'calls' | 'search' | 'settings') => {
+                    const isActive = activeScreen === screen;
+                    if (isLiquidGlassTheme) {
+                      if (isActive) {
+                        return isLight
+                          ? 'bg-white/90 backdrop-blur-2xl border border-white/90 text-[#007aff] shadow-[inset_0_1px_1.5px_rgba(255,255,255,1),0_4px_16px_rgba(0,122,255,0.2)] scale-105'
+                          : 'bg-gradient-to-r from-white/30 to-white/10 backdrop-blur-2xl border border-white/40 text-white shadow-[inset_0_1px_1.5px_rgba(255,255,255,0.6),0_4px_20px_rgba(255,255,255,0.2)] scale-105';
+                      }
+                      return isLight
+                        ? 'text-slate-600 hover:text-slate-900 hover:bg-white/40'
+                        : 'text-white/60 hover:text-white hover:bg-white/5';
+                    } else {
+                      // Neumorphism style for all other themes
+                      if (isActive) {
+                        return isLight
+                          ? 'bg-[#d8e0ed] border border-white/60 text-[#007aff] shadow-[inset_3px_3px_6px_rgba(163,177,198,0.8),inset_-3px_-3px_6px_rgba(255,255,255,0.95)] scale-105 font-black'
+                          : 'bg-[#0c1018] border border-white/5 text-[#20e3a2] shadow-[inset_3px_3px_6px_rgba(0,0,0,0.85),inset_-2px_-2px_5px_rgba(255,255,255,0.08)] scale-105 font-black';
+                      }
+                      return isLight
+                        ? 'text-slate-500 hover:text-slate-800 hover:bg-white/30'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5';
+                    }
+                  };
+
+                  return (
+                    <div className={`flex items-center justify-around px-2 py-1.5 rounded-full ${containerClass}`}>
+                      {/* Chats */}
+                      <button
+                        type="button"
+                        onClick={() => setActiveScreen('chatList')}
+                        className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-full text-[11px] font-extrabold transition-all cursor-pointer select-none ${getButtonClass('chatList')}`}
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                        <span className="text-[10px] mt-0.5">Chats</span>
+                      </button>
+
+                      {/* Calls */}
+                      <button
+                        type="button"
+                        onClick={() => setActiveScreen('calls')}
+                        className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-full text-[11px] font-extrabold transition-all cursor-pointer select-none ${getButtonClass('calls')}`}
+                      >
+                        <Phone className="w-4 h-4" />
+                        <span className="text-[10px] mt-0.5">Calls</span>
+                      </button>
+
+                      {/* People */}
+                      <button
+                        type="button"
+                        onClick={() => setActiveScreen('search')}
+                        className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-full text-[11px] font-extrabold transition-all cursor-pointer select-none ${getButtonClass('search')}`}
+                      >
+                        <Users className="w-4 h-4" />
+                        <span className="text-[10px] mt-0.5">People</span>
+                      </button>
+
+                      {/* Settings */}
+                      <button
+                        type="button"
+                        onClick={() => setActiveScreen('settings')}
+                        className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-full text-[11px] font-extrabold transition-all cursor-pointer select-none ${getButtonClass('settings')}`}
+                      >
+                        <Settings className="w-4 h-4" />
+                        <span className="text-[10px] mt-0.5">Settings</span>
+                      </button>
+                    </div>
+                  );
+                })()}
+              </div>
             )}
 
             {/* Full-Screen Profile details */}

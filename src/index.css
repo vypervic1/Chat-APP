@@ -133,7 +133,7 @@ body {
 .bg-\[\#182130\] { background-color: var(--bubble-recv) !important; }
 
 /* ========================================================================= */
-/* LIGHT THEMES SYSTEM (Crafted with precision, non-destructive to buttons) */
+/* LIGHT THEMES SYSTEM (Intelligent, Crafted Precision across all Light Themes) */
 /* ========================================================================= */
 
 :root[data-theme="light-cosmic"],
@@ -142,13 +142,13 @@ body {
   --surface: #ffffff;
   --surface-2: #f1f5f9;
   --surface-3: #e2e8f0;
-  --hairline: #cbd5e1;
-  --accent-a: #059669;
-  --accent-b: #6366f1;
+  --hairline: #e2e8f0;
+  --accent-a: #007aff;
+  --accent-b: #7c5cff;
   --text-1: #0f172a;
   --text-2: #475569;
   --text-3: #64748b;
-  --bubble-recv: #f1f5f9;
+  --bubble-recv: #ffffff;
 }
 
 :root[data-theme="light-solar"] {
@@ -176,63 +176,234 @@ body {
   --text-1: #064e3b;
   --text-2: #047857;
   --text-3: #059669;
-  --bubble-recv: #e6f4ea;
+  --bubble-recv: #ffffff;
 }
 
-/* Non-destructive Light Mode Container Rules */
+/* Universal Light Mode Body & Text Overrides */
 :root[data-theme^="light"] body {
   background: var(--bg) !important;
   color: var(--text-1) !important;
 }
 
-:root[data-theme^="light"] .bg-\[\#161d28\]\/60 {
-  background-color: rgba(255, 255, 255, 0.8) !important;
+/* Light Mode Background Overrides for Dark Container Classes & Opacity Variants */
+:root[data-theme^="light"] [class*="bg-[#080b10]"],
+:root[data-theme^="light"] [class*="bg-[#0c1017]"],
+:root[data-theme^="light"] [class*="bg-[#030509]"],
+:root[data-theme^="light"] [class*="bg-[#040706]"],
+:root[data-theme^="light"] [class*="bg-[#0b0914]"],
+:root[data-theme^="light"] [class*="bg-[#030712]"] {
+  background-color: var(--bg) !important;
 }
 
-:root[data-theme^="light"] .bg-\[\#080b10\]\/95 {
-  background-color: rgba(248, 250, 252, 0.95) !important;
+:root[data-theme^="light"] [class*="bg-[#10151d]"] {
+  background-color: var(--surface) !important;
 }
 
-:root[data-theme^="light"] .bg-\[\#0c1017\]\/95 {
-  background-color: rgba(255, 255, 255, 0.95) !important;
+:root[data-theme^="light"] [class*="bg-[#161d28]"],
+:root[data-theme^="light"] [class*="bg-[#121824]"] {
+  background-color: var(--surface-2) !important;
 }
 
-:root[data-theme^="light"] .bg-\[\#030509\]\/85 {
-  background-color: rgba(241, 245, 249, 0.9) !important;
+:root[data-theme^="light"] [class*="bg-[#1d2531]"] {
+  background-color: var(--surface-3) !important;
+}
+
+:root[data-theme^="light"] [class*="bg-[#182130]"] {
+  background-color: var(--bubble-recv) !important;
+}
+
+/* Light Mode Border Overrides */
+:root[data-theme^="light"] [class*="border-[#212a38]"],
+:root[data-theme^="light"] [class*="border-[#1a2621]"],
+:root[data-theme^="light"] [class*="border-[#302a54]"],
+:root[data-theme^="light"] [class*="border-white/10"],
+:root[data-theme^="light"] [class*="border-white/15"],
+:root[data-theme^="light"] [class*="border-white/20"] {
+  border-color: var(--hairline) !important;
+}
+
+/* Light Mode Typography Overrides */
+:root[data-theme^="light"] .text-[#eef1f6],
+:root[data-theme^="light"] .text-white,
+:root[data-theme^="light"] .text-white\/95,
+:root[data-theme^="light"] .text-white\/90,
+:root[data-theme^="light"] .text-white\/80,
+:root[data-theme^="light"] .text-white\/70 {
+  color: var(--text-1) !important;
+}
+
+:root[data-theme^="light"] .text-[#8d97ab],
+:root[data-theme^="light"] .text-white\/60,
+:root[data-theme^="light"] .text-white\/50 {
+  color: var(--text-2) !important;
+}
+
+:root[data-theme^="light"] .text-[#5a6478],
+:root[data-theme^="light"] .text-white\/40,
+:root[data-theme^="light"] .text-white\/30 {
+  color: var(--text-3) !important;
+}
+
+/* Headers & Sticky Bars in Light Themes */
+:root[data-theme^="light"] header,
+:root[data-theme^="light"] .sticky.top-0 {
+  background-color: var(--surface) !important;
+  border-bottom-color: var(--hairline) !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* Header Buttons & Circular Action Icons in Light Themes */
+:root[data-theme^="light"] .bg-white\/10,
+:root[data-theme^="light"] header button,
+:root[data-theme^="light"] .sticky button {
+  background-color: var(--surface-2) !important;
+  border-color: var(--hairline) !important;
+  color: var(--text-1) !important;
+}
+
+/* Sent Message Bubbles: ALWAYS retain high-contrast white text on gradient/active backgrounds */
+:root[data-theme^="light"] .rounded-br-none.bg-gradient-to-br,
+:root[data-theme^="light"] .rounded-br-none[class*="from-[#7c5cff]"],
+:root[data-theme^="light"] .rounded-br-none {
+  color: #ffffff !important;
+}
+
+:root[data-theme^="light"] .rounded-br-none *,
+:root[data-theme^="light"] .rounded-br-none .text-[#eef1f6],
+:root[data-theme^="light"] .rounded-br-none .text-[#8d97ab],
+:root[data-theme^="light"] .rounded-br-none .text-[#5a6478] {
+  color: #ffffff !important;
+}
+
+:root[data-theme^="light"] .rounded-br-none .text-[#eef1f6]\/80,
+:root[data-theme^="light"] .rounded-br-none .text-[#8d97ab] {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+/* Received Message Bubbles in Light Themes */
+:root[data-theme^="light"] .rounded-bl-none {
+  background-color: var(--bubble-recv) !important;
+  border-color: var(--hairline) !important;
+  color: var(--text-1) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04) !important;
+}
+
+:root[data-theme^="light"] .rounded-bl-none * {
+  color: var(--text-1) !important;
+}
+
+:root[data-theme^="light"] .rounded-bl-none .text-[#8d97ab],
+:root[data-theme^="light"] .rounded-bl-none .text-[#5a6478] {
+  color: var(--text-2) !important;
+}
+
+/* Inputs & Form Fields in Light Themes */
+:root[data-theme^="light"] form [class*="bg-[#161d28]"],
+:root[data-theme^="light"] form div[class*="bg-[#161d28]"],
+:root[data-theme^="light"] input[class*="bg-transparent"] {
+  background-color: var(--surface-2) !important;
+  border-color: var(--hairline) !important;
+  color: var(--text-1) !important;
+}
+
+:root[data-theme^="light"] input::placeholder {
+  color: var(--text-3) !important;
+}
+
+/* Specific Atmosphere Customization per Light Theme Type */
+
+/* Light Cosmic Body Background & Sent Bubble Styling */
+:root[data-theme="light-cosmic"] body,
+:root[data-theme="light"] body {
+  background: 
+    radial-gradient(circle at 10% 10%, rgba(124, 92, 255, 0.08), transparent 45%),
+    radial-gradient(circle at 90% 90%, rgba(0, 122, 255, 0.08), transparent 45%),
+    #f8fafc !important;
+}
+
+:root[data-theme="light-cosmic"] .rounded-br-none,
+:root[data-theme="light"] .rounded-br-none {
+  background: linear-gradient(135deg, #7c5cff 0%, #007aff 100%) !important;
+  border: none !important;
+  box-shadow: 0 4px 16px rgba(124, 92, 255, 0.25) !important;
+}
+
+/* Light Solar Body Background & Theme Adjustments */
+:root[data-theme="light-solar"] body {
+  background: 
+    radial-gradient(circle at 15% 15%, rgba(251, 191, 36, 0.12), transparent 45%),
+    radial-gradient(circle at 85% 85%, rgba(139, 92, 246, 0.08), transparent 45%),
+    #fffbf5 !important;
+}
+
+:root[data-theme="light-solar"] .rounded-br-none {
+  background: linear-gradient(135deg, #8b5cf6 0%, #0284c7 100%) !important;
+  border: none !important;
+  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.22) !important;
+}
+
+:root[data-theme="light-solar"] .rounded-bl-none {
+  background: #ffffff !important;
+  border: 1px solid #fde68a !important;
+  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.06) !important;
+}
+
+/* Light Emerald Body Background & Theme Adjustments */
+:root[data-theme="light-emerald"] body {
+  background: 
+    radial-gradient(circle at 15% 15%, rgba(16, 185, 129, 0.12), transparent 45%),
+    radial-gradient(circle at 85% 85%, rgba(52, 211, 153, 0.10), transparent 45%),
+    #f0fdf4 !important;
+}
+
+:root[data-theme="light-emerald"] .rounded-br-none {
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;
+  border: none !important;
+  box-shadow: 0 4px 16px rgba(5, 150, 105, 0.22) !important;
+}
+
+:root[data-theme="light-emerald"] .rounded-bl-none {
+  background: #ffffff !important;
+  border: 1px solid #a7f3d0 !important;
+  box-shadow: 0 2px 8px rgba(6, 78, 59, 0.05) !important;
 }
 
 /* ========================================================================= */
-/* LIQUID GLASS THEME (iOS Specular Water & Glass Experience)                */
+/* LIQUID GLASS THEME (iOS 26 Specular Water & Optical Glass Experience)     */
 /* ========================================================================= */
 
 :root[data-theme="liquid-glass"] {
   --bg: #030712;
-  --surface: rgba(17, 24, 39, 0.55);
-  --surface-2: rgba(31, 41, 55, 0.65);
-  --surface-3: rgba(55, 65, 81, 0.75);
-  --hairline: rgba(255, 255, 255, 0.18);
+  --surface: rgba(15, 23, 42, 0.45);
+  --surface-2: rgba(30, 41, 59, 0.55);
+  --surface-3: rgba(51, 65, 85, 0.65);
+  --hairline: rgba(255, 255, 255, 0.14);
   --accent-a: #007aff;
   --accent-b: #38bdf8;
-  --text-1: #f8fafc;
-  --text-2: #94a3b8;
-  --text-3: #64748b;
-  --bubble-recv: rgba(31, 41, 55, 0.6);
+  --accent-cyan: #00f2fe;
+  --accent-teal: #20e3a2;
+  --text-1: #ffffff;
+  --text-2: #cbd5e1;
+  --text-3: #94a3b8;
+  --bubble-recv: rgba(255, 255, 255, 0.1);
   --app-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "SF Pro", "Helvetica Neue", sans-serif;
   --app-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro", sans-serif;
 }
 
 :root[data-theme="light-liquid-glass"] {
-  --bg: #e2e8f0;
-  --surface: rgba(255, 255, 255, 0.8);
-  --surface-2: rgba(241, 245, 249, 0.88);
-  --surface-3: rgba(226, 232, 240, 0.92);
-  --hairline: rgba(203, 213, 225, 0.75);
+  --bg: #f8fafc;
+  --surface: rgba(255, 255, 255, 0.78);
+  --surface-2: rgba(255, 255, 255, 0.88);
+  --surface-3: rgba(241, 245, 249, 0.92);
+  --hairline: rgba(255, 255, 255, 0.95);
   --accent-a: #007aff;
-  --accent-b: #0284c7;
-  --text-1: #0f172a;
-  --text-2: #334155;
+  --accent-b: #38bdf8;
+  --accent-cyan: #0284c7;
+  --accent-teal: #0d9488;
+  --text-1: #1f1f24;
+  --text-2: #475569;
   --text-3: #64748b;
-  --bubble-recv: rgba(255, 255, 255, 0.9);
+  --bubble-recv: rgba(255, 255, 255, 0.88);
   --app-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "SF Pro", "Helvetica Neue", sans-serif;
   --app-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro", sans-serif;
 }
@@ -245,57 +416,169 @@ body {
 
 :root[data-theme="liquid-glass"] body {
   background: 
-    radial-gradient(circle at 15% 15%, rgba(0, 122, 255, 0.28), transparent 45%),
-    radial-gradient(circle at 85% 85%, rgba(56, 189, 248, 0.22), transparent 45%),
-    #030712 !important;
+    radial-gradient(circle at 18% 12%, rgba(0, 242, 254, 0.14), transparent 42%),
+    radial-gradient(circle at 82% 22%, rgba(56, 189, 248, 0.12), transparent 45%),
+    radial-gradient(circle at 50% 82%, rgba(192, 132, 252, 0.10), transparent 50%),
+    radial-gradient(circle at 72% 58%, rgba(32, 227, 162, 0.08), transparent 40%),
+    linear-gradient(135deg, #030712 0%, #060b19 35%, #0a1128 70%, #040817 100%) !important;
   color: var(--text-1) !important;
 }
 
 :root[data-theme="light-liquid-glass"] body {
   background: 
-    radial-gradient(circle at 15% 15%, rgba(0, 122, 255, 0.15), transparent 45%),
-    radial-gradient(circle at 85% 85%, rgba(56, 189, 248, 0.15), transparent 45%),
-    #e2e8f0 !important;
-  color: var(--text-1) !important;
+    radial-gradient(circle at 12% 10%, rgba(56, 189, 248, 0.22), transparent 45%),
+    radial-gradient(circle at 88% 18%, rgba(192, 132, 252, 0.18), transparent 45%),
+    radial-gradient(circle at 50% 50%, rgba(32, 227, 162, 0.15), transparent 50%),
+    radial-gradient(circle at 80% 85%, rgba(14, 165, 233, 0.20), transparent 45%),
+    radial-gradient(circle at 20% 80%, rgba(168, 85, 247, 0.16), transparent 50%),
+    linear-gradient(135deg, #f8fafc 0%, #f1f5f9 35%, #e2e8f0 70%, #f8fafc 100%) !important;
+  color: #1f1f24 !important;
 }
 
-/* Liquid Glass Glassmorphism & Water Specular Highlights */
+/* 3D Liquid Glassmorphism & Crystal Specular Highlights (Dark Liquid Glass) */
 :root[data-theme="liquid-glass"] .bg-\[\#10151d\],
 :root[data-theme="liquid-glass"] .bg-\[\#161d28\],
 :root[data-theme="liquid-glass"] .bg-\[\#1d2531\] {
-  background-color: var(--surface) !important;
-  backdrop-filter: blur(32px) saturate(210%) !important;
-  -webkit-backdrop-filter: blur(32px) saturate(210%) !important;
-  border-color: rgba(255, 255, 255, 0.18) !important;
-  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.28), 0 8px 32px rgba(0, 0, 0, 0.28) !important;
+  background: var(--surface) !important;
+  backdrop-filter: blur(32px) saturate(220%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(220%) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.3), 0 12px 40px rgba(0, 0, 0, 0.35) !important;
 }
 
-:root[data-theme="light-liquid-glass"] .bg-\[\#10151d\],
-:root[data-theme="light-liquid-glass"] .bg-\[\#161d28\],
-:root[data-theme="light-liquid-glass"] .bg-\[\#1d2531\] {
-  background-color: var(--surface) !important;
-  backdrop-filter: blur(32px) saturate(210%) !important;
-  -webkit-backdrop-filter: blur(32px) saturate(210%) !important;
-  border-color: rgba(255, 255, 255, 0.85) !important;
-  box-shadow: inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.95), 0 8px 32px rgba(0, 0, 0, 0.08) !important;
+/* LIGHT LIQUID GLASS CARDS OVERRIDE: Replaces all dark containers with frosted white glass cards */
+:root[data-theme="light-liquid-glass"] [class*="bg-[#161d28]"],
+:root[data-theme="light-liquid-glass"] [class*="bg-[#10151d]"],
+:root[data-theme="light-liquid-glass"] [class*="bg-[#1d2531]"],
+:root[data-theme="light-liquid-glass"] [class*="bg-[#121824]"],
+:root[data-theme="light-liquid-glass"] [class*="bg-[#080b10]"],
+:root[data-theme="light-liquid-glass"] [class*="bg-[#0c1017]"] {
+  background: rgba(255, 255, 255, 0.78) !important;
+  backdrop-filter: blur(40px) saturate(220%) !important;
+  -webkit-backdrop-filter: blur(40px) saturate(220%) !important;
+  border-color: rgba(255, 255, 255, 0.95) !important;
+  box-shadow: inset 0 1.5px 2px 0 rgba(255, 255, 255, 1), inset 0 -1px 1px 0 rgba(0, 0, 0, 0.02), 0 12px 36px rgba(100, 116, 139, 0.12) !important;
+  border-radius: 28px !important;
 }
 
-:root[data-theme="liquid-glass"] .bg-\[\#161d28\]\/60 {
-  background-color: rgba(31, 41, 55, 0.45) !important;
-  backdrop-filter: blur(32px) saturate(210%) !important;
-  -webkit-backdrop-filter: blur(32px) saturate(210%) !important;
+:root[data-theme="light-liquid-glass"] [class*="bg-[#161d28]"]:hover,
+:root[data-theme="light-liquid-glass"] [class*="bg-[#10151d]"]:hover,
+:root[data-theme="light-liquid-glass"] [class*="bg-[#1d2531]"]:hover {
+  background: rgba(255, 255, 255, 0.92) !important;
+  box-shadow: inset 0 1.5px 2px 0 rgba(255, 255, 255, 1), 0 16px 40px rgba(100, 116, 139, 0.16) !important;
 }
 
-:root[data-theme="light-liquid-glass"] .bg-\[\#161d28\]\/60 {
-  background-color: rgba(255, 255, 255, 0.75) !important;
-  backdrop-filter: blur(32px) saturate(210%) !important;
-  -webkit-backdrop-filter: blur(32px) saturate(210%) !important;
+/* Light Liquid Glass Text Overrides */
+:root[data-theme="light-liquid-glass"] .text-white,
+:root[data-theme="light-liquid-glass"] .text-white\/95,
+:root[data-theme="light-liquid-glass"] .text-white\/90,
+:root[data-theme="light-liquid-glass"] .text-white\/80,
+:root[data-theme="light-liquid-glass"] .text-white\/70,
+:root[data-theme="light-liquid-glass"] .text-\[\#eef1f6\] {
+  color: #1f1f24 !important;
+}
+
+:root[data-theme="light-liquid-glass"] .text-white\/60,
+:root[data-theme="light-liquid-glass"] .text-white\/50,
+:root[data-theme="light-liquid-glass"] .text-\[\#8d97ab\] {
+  color: #475569 !important;
+}
+
+:root[data-theme="light-liquid-glass"] .text-\[\#5a6478\],
+:root[data-theme="light-liquid-glass"] .text-white\/40 {
+  color: #64748b !important;
+}
+
+/* Header & Top Bar in Light Liquid Glass */
+:root[data-theme="light-liquid-glass"] header,
+:root[data-theme="light-liquid-glass"] .sticky.top-0,
+:root[data-theme="light-liquid-glass"] [class*="bg-[#080b10]"],
+:root[data-theme="light-liquid-glass"] [class*="bg-[#0c1017]"] {
+  background: rgba(255, 255, 255, 0.75) !important;
+  backdrop-filter: blur(40px) saturate(220%) !important;
+  -webkit-backdrop-filter: blur(40px) saturate(220%) !important;
+  border-bottom-color: rgba(255, 255, 255, 0.85) !important;
+  box-shadow: 0 8px 32px rgba(100, 116, 139, 0.08) !important;
+}
+
+/* Circular Buttons & Pills in Light Liquid Glass */
+:root[data-theme="light-liquid-glass"] .bg-white\/10,
+:root[data-theme="light-liquid-glass"] header button,
+:root[data-theme="light-liquid-glass"] .sticky button {
+  background-color: rgba(255, 255, 255, 0.85) !important;
+  border-color: rgba(255, 255, 255, 0.95) !important;
+  box-shadow: inset 0 1.5px 2px rgba(255, 255, 255, 1), 0 4px 16px rgba(100, 116, 139, 0.12) !important;
+  color: #1f1f24 !important;
+}
+
+/* Floating Search Crystal Marble in Light Liquid Glass */
+:root[data-theme="light-liquid-glass"] .fixed.bottom-20.right-5 {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(224, 242, 254, 0.90) 35%, rgba(240, 253, 250, 0.90) 70%, rgba(243, 232, 255, 0.95) 100%) !important;
+  backdrop-filter: blur(40px) saturate(220%) !important;
+  -webkit-backdrop-filter: blur(40px) saturate(220%) !important;
+  border: 1.5px solid rgba(255, 255, 255, 1) !important;
+  box-shadow: inset 0 2px 3px rgba(255, 255, 255, 1), inset 0 -2px 4px rgba(0, 122, 255, 0.12), 0 14px 40px rgba(56, 189, 248, 0.35) !important;
+  color: #0f172a !important;
+}
+:root[data-theme="light-liquid-glass"] .fixed.bottom-20.right-5 svg {
+  color: #007aff !important;
+}
+
+/* Chat Screen Bubbles in Light Liquid Glass */
+
+/* Sent Message Bubbles: Vibrant iOS Blue / Azure Gradient with Glossy Specular Highlight */
+:root[data-theme="light-liquid-glass"] .rounded-br-none.bg-gradient-to-br,
+:root[data-theme="light-liquid-glass"] .from-\[\#7c5cff\] {
+  background: linear-gradient(135deg, #007aff 0%, #00c6ff 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  box-shadow: inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.6), 0 8px 24px rgba(0, 122, 255, 0.28) !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme="light-liquid-glass"] .rounded-br-none.bg-gradient-to-br *,
+:root[data-theme="light-liquid-glass"] .from-\[\#7c5cff\] * {
+  color: #ffffff !important;
+}
+
+/* Received Message Bubbles: Pristine Translucent Frosted Glass with Graphite Text */
+:root[data-theme="light-liquid-glass"] .rounded-bl-none.bg-\[\#161d28\],
+:root[data-theme="light-liquid-glass"] .rounded-bl-none {
+  background: rgba(255, 255, 255, 0.88) !important;
+  backdrop-filter: blur(28px) saturate(220%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(220%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.95) !important;
+  box-shadow: inset 0 1.5px 2px 0 rgba(255, 255, 255, 1), 0 6px 20px rgba(100, 116, 139, 0.08) !important;
+  color: #1f1f24 !important;
+}
+
+:root[data-theme="light-liquid-glass"] .rounded-bl-none * {
+  color: #1f1f24 !important;
+}
+:root[data-theme="light-liquid-glass"] .rounded-bl-none .text-\[\#8d97ab\],
+:root[data-theme="light-liquid-glass"] .rounded-bl-none .text-\[\#5a6478\] {
+  color: #64748b !important;
+}
+
+/* Chat Input Bar in Light Liquid Glass */
+:root[data-theme="light-liquid-glass"] form .bg-\[\#161d28\],
+:root[data-theme="light-liquid-glass"] form div[class*="bg-[#161d28]"] {
+  background: rgba(255, 255, 255, 0.88) !important;
+  border-color: rgba(255, 255, 255, 0.95) !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04), inset 0 1.5px 2px rgba(255, 255, 255, 1) !important;
+}
+
+:root[data-theme="light-liquid-glass"] form input {
+  color: #1f1f24 !important;
+}
+
+:root[data-theme="light-liquid-glass"] form input::placeholder {
+  color: #94a3b8 !important;
 }
 
 :root[data-theme="liquid-glass"] .border-\[\#212a38\],
 :root[data-theme="liquid-glass"] .border-\[\#212a38\]\/65,
 :root[data-theme="liquid-glass"] .border-\[\#212a38\]\/80 {
-  border-color: rgba(255, 255, 255, 0.18) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
 }
 
 :root[data-theme="light-liquid-glass"] .border-\[\#212a38\],
@@ -304,7 +587,7 @@ body {
   border-color: rgba(203, 213, 225, 0.65) !important;
 }
 
-/* Touch optimization and instant tap response */
+/* Touch optimization and tactile press feedback */
 button, a, input, select, textarea, [role="button"] {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
@@ -325,7 +608,7 @@ button, a, input, select, textarea, [role="button"] {
   white-space: nowrap !important;
 }
 
-/* Water Bubble buttons touch animation in Liquid Glass mode */
+/* Water Crystal button touch animation in Liquid Glass mode */
 :root[data-theme="liquid-glass"] button,
 :root[data-theme="light-liquid-glass"] button {
   transition: transform 0.15s cubic-bezier(0.32, 0.72, 0, 1), background-color 0.15s ease, border-color 0.15s ease !important;
@@ -333,6 +616,6 @@ button, a, input, select, textarea, [role="button"] {
 
 :root[data-theme="liquid-glass"] button:active,
 :root[data-theme="light-liquid-glass"] button:active {
-  transform: scale(0.94) translateY(1px) !important;
+  transform: scale(0.95) translateY(1px) !important;
 }
 

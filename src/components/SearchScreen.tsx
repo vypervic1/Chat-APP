@@ -424,7 +424,7 @@ export default function SearchScreen({
       </div>
 
       {/* Main Container */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 pb-12">
+      <div className="flex-1 overflow-y-auto px-4 py-4 pb-28">
         {/* Create Group Banner CTA at the top (Requirement 4) */}
         {!searchQuery && (
           <div className="mb-5 bg-gradient-to-r from-[#7c5cff]/10 to-[#20e3a2]/10 border border-[#212a38] rounded-2xl p-4 flex items-center justify-between gap-4 shadow-lg">

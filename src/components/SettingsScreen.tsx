@@ -462,7 +462,7 @@ export default function SettingsScreen({
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-[22px] py-6 pb-10">
+      <div className="flex-1 overflow-y-auto px-[22px] py-6 pb-28">
         <div className="flex flex-col items-center mb-[30px] w-full relative">
           {/* Cover Photo Container */}
           <div 

@@ -271,12 +271,12 @@ export default function ChatListScreen({
           <button
             type="button"
             onClick={onOpenNotifications}
-            className="relative w-8.5 h-8.5 rounded-full bg-[#161d28] border border-[#20e3a2]/40 flex items-center justify-center cursor-pointer hover:bg-[#1d2531] transition-colors group shadow-md"
+            className="relative w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/20 flex items-center justify-center cursor-pointer transition-all group shadow-[inset_0_1px_1.5px_rgba(255,255,255,0.35),0_4px_16px_rgba(0,0,0,0.2)]"
             title="Notifications & Messages"
           >
-            <Bell className="w-4 h-4 text-[#20e3a2] group-hover:scale-110 transition-transform" />
+            <Bell className="w-4.5 h-4.5 text-white/80 group-hover:text-white transition-colors" />
             {unreadNotificationsCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-[#ff5470] text-black text-[9px] font-black rounded-full flex items-center justify-center animate-pulse shadow-[0_0_6px_rgba(255,84,112,0.6)]">
+              <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-[#ff5470] text-white text-[9px] font-black rounded-full flex items-center justify-center animate-pulse shadow-[0_0_8px_rgba(255,84,112,0.8)]">
                 {unreadNotificationsCount}
               </span>
             )}
@@ -287,10 +287,10 @@ export default function ChatListScreen({
             <button
               type="button"
               onClick={() => setShowMenu((prev) => !prev)}
-              className="w-8.5 h-8.5 rounded-full bg-[#161d28] border border-[#212a38] flex items-center justify-center cursor-pointer hover:bg-[#1d2531] transition-colors"
+              className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/20 flex items-center justify-center cursor-pointer transition-all shadow-[inset_0_1px_1.5px_rgba(255,255,255,0.35),0_4px_16px_rgba(0,0,0,0.2)]"
               title="More Options"
             >
-              <MoreHorizontal className="w-4.5 h-4.5 text-[#8d97ab]" />
+              <MoreHorizontal className="w-4.5 h-4.5 text-white/80" />
             </button>
 
             {/* Dropdown Menu */}
@@ -714,13 +714,14 @@ export default function ChatListScreen({
         </div>
       </div>
 
-      {/* Floating Action Search Button */}
+      {/* Floating Action Search Glass Orb */}
       <button
+        type="button"
         onClick={onOpenSearch}
-        className="absolute bottom-6 right-6 w-14 h-14 rounded-full bg-gradient-to-r from-[#20e3a2] to-[#7c5cff] text-black shadow-[0_8px_24px_rgba(32,227,162,0.35)] flex items-center justify-center cursor-pointer hover:scale-105 active:scale-95 transition-all z-40 hover:shadow-[0_8px_32px_rgba(124,92,255,0.45)] group border border-white/10"
+        className="fixed bottom-20 right-5 w-13 h-13 rounded-full bg-white/20 backdrop-blur-2xl border border-white/40 text-white shadow-[0_12px_36px_rgba(0,0,0,0.4),inset_0_1.5px_2px_rgba(255,255,255,0.7)] flex items-center justify-center cursor-pointer hover:scale-110 active:scale-95 transition-all z-30 group"
         title="Search & Establish Channel"
       >
-        <Search className="w-5.5 h-5.5 text-black group-hover:rotate-12 transition-transform" />
+        <Search className="w-5.5 h-5.5 text-white group-hover:rotate-12 transition-transform drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]" />
       </button>
 
       {/* Archived Chats Modal */}
