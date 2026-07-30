@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import { Profile, Call } from '../types';
-import { Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Plus, Search, User, Shield, Circle, ArrowUpRight } from 'lucide-react';
+import { Phone, Video, PhoneIncoming, PhoneOutgoing, PhoneMissed, Plus, Search, User, Shield, Circle, ArrowUpRight, X, Clock, Lock, Info } from 'lucide-react';
 import { isUserOnline, getContactDisplayName } from '../utils/customNames';
 
 interface CallsScreenProps {
@@ -11,7 +11,7 @@ interface CallsScreenProps {
   onViewProfileDetail?: (type: 'user' | 'group' | 'general', data?: any) => void;
 }
 
-export default function CallsScreen({
+function CallsScreen({
   currentUser,
   allProfiles,
   callHistory,
@@ -21,6 +21,8 @@ export default function CallsScreen({
   const [searchQuery, setSearchQuery] = useState('');
   const [showCallPicker, setShowCallPicker] = useState(false);
   const [pickerType, setPickerType] = useState<'voice' | 'video'>('voice');
+  const [selectedCallDetails, setSelectedCallDetails] = useState<Call | null>(null);
+
 
   // Filter peers
   const contacts = allProfiles.filter((p) => p.id !== currentUser.id);
@@ -151,12 +153,16 @@ export default function CallsScreen({
               return (
                 <div
                   key={call.id}
-                  className="p-3.5 rounded-3xl bg-white/[0.06] backdrop-blur-xl border border-white/10 shadow-[0_4px_20px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.2)] hover:bg-white/[0.1] transition-all flex items-center justify-between group"
+                  onClick={() => setSelectedCallDetails(call)}
+                  className="p-3.5 rounded-3xl bg-white/[0.06] backdrop-blur-xl border border-white/10 shadow-[0_4px_20px_rgba(0,0,0,0.25),inset_0_1px_1px_rgba(255,255,255,0.2)] hover:bg-white/[0.12] transition-all flex items-center justify-between group cursor-pointer active:scale-[0.99]"
                 >
                   <div className="flex items-center gap-3.5 min-w-0">
                     <div 
-                      onClick={() => peer && onViewProfileDetail?.('user', peer)}
-                      className="relative w-12 h-12 rounded-full border-2 border-white/20 shadow-md overflow-hidden shrink-0 cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (peer) onViewProfileDetail?.('user', peer);
+                      }}
+                      className="relative w-12 h-12 rounded-full border-2 border-white/20 shadow-md overflow-hidden shrink-0 cursor-pointer hover:border-[#38bdf8] transition-colors"
                     >
                       {peer?.avatar_url ? (
                         <img src={peer.avatar_url} alt="" className="w-full h-full object-cover" />
@@ -188,8 +194,13 @@ export default function CallsScreen({
 
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => peer && onInitiateCall(peer.id, call.type || 'voice')}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (peer) onInitiateCall(peer.id, call.type || 'voice');
+                      }}
                       className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 flex items-center justify-center text-white active:scale-95 transition-all shadow-[inset_0_1px_1px_rgba(255,255,255,0.3)]"
+                      title="Redial"
                     >
                       {call.type === 'video' ? <Video className="w-4 h-4 text-[#38bdf8]" /> : <Phone className="w-4 h-4 text-[#20e3a2]" />}
                     </button>
@@ -200,6 +211,137 @@ export default function CallsScreen({
           </div>
         )}
       </div>
+
+      {/* Call Details Modal */}
+      {selectedCallDetails && (() => {
+        const isOutgoing = selectedCallDetails.caller_id === currentUser.id;
+        const peerId = isOutgoing ? selectedCallDetails.receiver_id : selectedCallDetails.caller_id;
+        const peer = allProfiles.find((p) => p.id === peerId);
+        const displayName = peer ? getContactDisplayName(peer) : (selectedCallDetails.receiver_id === 'general' ? 'General Channel' : 'Unknown Contact');
+        const seed = peer?.username?.charCodeAt(0) || 0;
+
+        return (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-xl z-[120] flex items-center justify-center p-4 animate-fade-in">
+            <div className="w-full max-w-sm bg-slate-900/95 backdrop-blur-2xl border border-white/20 rounded-3xl p-6 shadow-2xl space-y-5 text-center relative overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#38bdf8] via-[#7c5cff] to-[#20e3a2]" />
+              
+              <button
+                type="button"
+                onClick={() => setSelectedCallDetails(null)}
+                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 border border-white/15 flex items-center justify-center text-white/70 hover:text-white cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="pt-2 flex flex-col items-center">
+                <div 
+                  onClick={() => {
+                    if (peer) {
+                      setSelectedCallDetails(null);
+                      onViewProfileDetail?.('user', peer);
+                    }
+                  }}
+                  className="w-20 h-20 rounded-full border-2 border-white/20 shadow-xl overflow-hidden mb-3 cursor-pointer hover:scale-105 transition-transform"
+                >
+                  {peer?.avatar_url ? (
+                    <img src={peer.avatar_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div 
+                      className="w-full h-full flex items-center justify-center text-white font-bold text-lg"
+                      style={{ background: getAvatarStyle(seed) }}
+                    >
+                      {getInitials(displayName)}
+                    </div>
+                  )}
+                </div>
+
+                <h3 className="font-display font-bold text-lg text-white">{displayName}</h3>
+                {peer?.username && <p className="text-xs text-white/50 font-mono">@{peer.username}</p>}
+              </div>
+
+              {/* Call Details Card */}
+              <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3 text-left">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-white/50 flex items-center gap-1.5">
+                    <Info className="w-3.5 h-3.5 text-[#38bdf8]" />
+                    Call Type
+                  </span>
+                  <span className="font-bold text-white capitalize">{selectedCallDetails.type || 'Voice'} Call</span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-white/50 flex items-center gap-1.5">
+                    {isOutgoing ? (
+                      <PhoneOutgoing className="w-3.5 h-3.5 text-[#38bdf8]" />
+                    ) : selectedCallDetails.status === 'rejected' ? (
+                      <PhoneMissed className="w-3.5 h-3.5 text-[#ff5470]" />
+                    ) : (
+                      <PhoneIncoming className="w-3.5 h-3.5 text-[#20e3a2]" />
+                    )}
+                    Direction / Status
+                  </span>
+                  <span className={`font-bold capitalize ${
+                    selectedCallDetails.status === 'rejected' ? 'text-[#ff5470]' : 'text-[#20e3a2]'
+                  }`}>
+                    {isOutgoing ? 'Outgoing' : 'Incoming'} ({selectedCallDetails.status || 'Completed'})
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-white/50 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-[#7c5cff]" />
+                    Timestamp
+                  </span>
+                  <span className="font-mono text-[11px] text-white/80">
+                    {selectedCallDetails.created_at ? new Date(selectedCallDetails.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Recent'}
+                  </span>
+                </div>
+
+                <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px]">
+                  <span className="text-white/40 flex items-center gap-1 font-mono">
+                    <Lock className="w-3 h-3 text-[#20e3a2]" />
+                    Encrypted
+                  </span>
+                  <span className="text-white/30 font-mono text-[10px]">
+                    ID: {selectedCallDetails.id.substring(0, 12)}...
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="grid grid-cols-2 gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (peer) {
+                      setSelectedCallDetails(null);
+                      onInitiateCall(peer.id, 'voice');
+                    }
+                  }}
+                  className="py-2.5 px-3 rounded-2xl bg-[#20e3a2]/20 hover:bg-[#20e3a2]/30 border border-[#20e3a2]/40 text-[#20e3a2] text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
+                >
+                  <Phone className="w-4 h-4" />
+                  Voice Call
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (peer) {
+                      setSelectedCallDetails(null);
+                      onInitiateCall(peer.id, 'video');
+                    }
+                  }}
+                  className="py-2.5 px-3 rounded-2xl bg-[#38bdf8]/20 hover:bg-[#38bdf8]/30 border border-[#38bdf8]/40 text-[#38bdf8] text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
+                >
+                  <Video className="w-4 h-4" />
+                  Video Call
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Select Call Partner Modal */}
       {showCallPicker && (
@@ -264,3 +406,6 @@ export default function CallsScreen({
     </div>
   );
 }
+
+export default memo(CallsScreen);
+

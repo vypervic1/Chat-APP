@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { supabase } from '../supabase';
 import { Profile, Group } from '../types';
 import { ArrowLeft, Search, Circle, X, Loader2, Compass, Users, Plus, Check, CheckSquare, Square, Shield, Image } from 'lucide-react';
@@ -12,7 +12,7 @@ interface SearchScreenProps {
   onCreateGroup?: (name: string, icon: string, memberIds: string[]) => void;
 }
 
-export default function SearchScreen({ 
+function SearchScreen({ 
   currentUser, 
   onCancel, 
   onSelectUser, 
@@ -282,7 +282,6 @@ export default function SearchScreen({
                 onChange={(e) => setGroupName(e.target.value)}
                 className="w-full bg-[#161d28] border border-[#212a38] rounded-xl px-3.5 py-2.5 text-xs text-white font-semibold placeholder-[#5a6478] outline-none focus:border-[#20e3a2] transition-colors"
                 maxLength={30}
-                autoFocus
               />
             </div>
 
@@ -410,7 +409,6 @@ export default function SearchScreen({
             className="flex-1 bg-transparent border-none outline-none text-xs text-[#eef1f6] font-semibold placeholder-[#5a6478]"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            autoFocus
           />
           {searchQuery && (
             <button
@@ -547,3 +545,5 @@ export default function SearchScreen({
     </div>
   );
 }
+
+export default memo(SearchScreen);

@@ -1,4 +1,4 @@
-import { useState, useRef, ChangeEvent, useEffect } from 'react';
+import { useState, useRef, ChangeEvent, useEffect, memo } from 'react';
 import { supabase } from '../supabase';
 import { Profile } from '../types';
 import { 
@@ -89,7 +89,7 @@ interface SettingsScreenProps {
   onToast: (msg: string) => void;
 }
 
-export default function SettingsScreen({
+function SettingsScreen({
   currentUser,
   allProfiles,
   appTheme,
@@ -1161,3 +1161,6 @@ export default function SettingsScreen({
     </div>
   );
 }
+
+export default memo(SettingsScreen);
+

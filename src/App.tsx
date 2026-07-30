@@ -1370,7 +1370,34 @@ export default function App() {
             }
 
             // Trigger background push notification checks and sliding banners
-            triggerPushNotification(newMsg);
+            // Explicitly filter message inserts by chat_id before triggering push notification
+            if (newMsg && newMsg.chat_id) {
+              const currentUserId = currentUserRef.current?.id;
+              let isTargetedToUser = false;
+
+              if (currentUserId) {
+                if (newMsg.chat_id.startsWith('dm:')) {
+                  const parts = newMsg.chat_id.split(':');
+                  isTargetedToUser = (parts[1] === currentUserId || parts[2] === currentUserId);
+                } else if (newMsg.chat_id.startsWith('me:')) {
+                  isTargetedToUser = newMsg.chat_id === `me:${currentUserId}`;
+                } else if (newMsg.chat_id.startsWith('group:')) {
+                  const targetGroup = groupsRef.current.find((g) => g.id === newMsg.chat_id);
+                  isTargetedToUser = !!(targetGroup?.members?.includes(currentUserId));
+                } else if (newMsg.chat_id === 'general') {
+                  const isMention = !!(
+                    newMsg.text && 
+                    currentUserRef.current?.username && 
+                    newMsg.text.toLowerCase().includes(`@${currentUserRef.current.username.toLowerCase()}`)
+                  );
+                  isTargetedToUser = isMention;
+                }
+              }
+
+              if (isTargetedToUser) {
+                triggerPushNotification(newMsg);
+              }
+            }
           } else if (payload.eventType === 'UPDATE') {
             const updatedMsg = payload.new as Message;
             setMessagesList((prev) => prev.map((m) => (m.id === updatedMsg.id ? updatedMsg : m)));
@@ -1780,8 +1807,8 @@ export default function App() {
     return () => clearInterval(interval);
   }, [currentUser, activeCall?.id]);
 
-  // Handle Call Initiation
-  const handleInitiateCall = async (type: 'voice' | 'video') => {
+  // Handle Call Initiation (Instant 0ms UI response)
+  const handleInitiateCall = (type: 'voice' | 'video') => {
     if (!currentUser) return;
     if (activeCallRef.current || activeCall || isInitiatingCallRef.current) {
       console.warn('Call already active, dialing, or initiating. Ignoring duplicate initiation attempt.');
@@ -1803,90 +1830,79 @@ export default function App() {
     }
 
     const isGeneral = receiverId === 'general' || receiverId.startsWith('group:');
-    let callData: any = null;
+    const callId = typeof crypto !== 'undefined' && crypto.randomUUID 
+      ? crypto.randomUUID() 
+      : `call_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-    try {
-      const { data, error } = await supabase
-        .from('calls')
-        .insert({
+    const callData = {
+      id: callId,
+      caller_id: currentUser.id,
+      receiver_id: receiverId,
+      type,
+      status: 'ringing' as const,
+      signal_data: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    // INSTANT UI UPDATE: Open call screen with 0ms tap latency
+    setActiveCall(callData);
+
+    // Post system message in chat
+    const callerName = currentUser.display_name || currentUser.username || 'Operator';
+    const callMetaText = `_vyper_call_::${JSON.stringify({
+      callId: callData.id,
+      type,
+      callerId: currentUser.id,
+      callerName,
+      receiverId,
+      status: 'ringing',
+    })}`;
+
+    const msgId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `msg_${Date.now()}`;
+    const messagePayload = {
+      id: msgId,
+      chat_id: isGeneral ? 'general' : (selectedChatId || 'general'),
+      sender_id: currentUser.id,
+      text: callMetaText,
+      file_name: null,
+      file_type: null,
+      file_data: null,
+      is_voice: false,
+      created_at: new Date().toISOString(),
+    };
+
+    setMessagesList((prev) => addOrUpdateMessage(prev, messagePayload));
+    sendBroadcastEvent('new_message', { message: messagePayload });
+
+    // Broadcast invitation immediately to bypass replication lag
+    sendBroadcastEvent('call_invite', { call: callData });
+
+    // Release initiating lock quickly
+    setTimeout(() => {
+      isInitiatingCallRef.current = false;
+    }, 1200);
+
+    // Persist to database asynchronously in the background
+    (async () => {
+      try {
+        await supabase.from('calls').insert({
+          id: callId,
           caller_id: currentUser.id,
           receiver_id: receiverId,
           type,
           status: 'ringing',
-        })
-        .select('*')
-        .single();
-
-      if (error) {
-        console.warn('Database insert failed for call, using real-time broadcast fallback:', error);
-        throw error;
+        });
+      } catch (err) {
+        console.warn('Background call database insert handled via fallback:', err);
       }
-      callData = data;
-    } catch (err: any) {
-      // Create a client-side mock/fallback call object
-      const fallbackId = typeof crypto !== 'undefined' && crypto.randomUUID 
-        ? crypto.randomUUID() 
-        : `call_${Math.random().toString(36).substring(2, 11)}`;
-      
-      callData = {
-        id: fallbackId,
-        caller_id: currentUser.id,
-        receiver_id: receiverId,
-        type,
-        status: 'ringing',
-        signal_data: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      console.log('Initiated call using secure peer-to-peer real-time broadcast backup:', callData);
-    } finally {
-      // Release initiating lock after a safety timeout to allow state updates to settle
-      setTimeout(() => {
-        isInitiatingCallRef.current = false;
-      }, 2500);
-    }
-
-    if (callData) {
-      setActiveCall(callData);
-
-      // Post an interactive system message in the chat room so the caller/receiver see it and can interact
-      const callerName = currentUser.display_name || currentUser.username || 'Operator';
-      const callMetaText = `_vyper_call_::${JSON.stringify({
-        callId: callData.id,
-        type,
-        callerId: currentUser.id,
-        callerName,
-        receiverId,
-        status: 'ringing',
-      })}`;
-
-      const msgId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `msg_${Date.now()}`;
-      const messagePayload = {
-        id: msgId,
-        chat_id: isGeneral ? 'general' : selectedChatId!,
-        sender_id: currentUser.id,
-        text: callMetaText,
-        file_name: null,
-        file_type: null,
-        file_data: null,
-        is_voice: false,
-        created_at: new Date().toISOString(),
-      };
 
       try {
         await supabase.from('messages').insert(messagePayload);
       } catch (dbErr) {
-        console.warn('Realtime db insert failed for call message:', dbErr);
+        console.warn('Background message insert handled via fallback:', dbErr);
       }
-
-      setMessagesList((prev) => addOrUpdateMessage(prev, messagePayload));
-      sendBroadcastEvent('new_message', { message: messagePayload });
-
-      // Broadcast invitation immediately to bypass replication lag
-      sendBroadcastEvent('call_invite', {
-        call: callData,
-      });
-    }
+    })();
   };
 
   // Handle joining a group call
@@ -2347,9 +2363,11 @@ export default function App() {
       </AnimatePresence>
 
       {/* Primary Screen Container */}
-      <div className="screen-stack w-full h-full">
+      <div className="screen-stack w-full h-full transform-gpu [will-change:transform] [backface-visibility:hidden]" style={{ willChange: 'transform', backfaceVisibility: 'hidden' }}>
         {!currentUser ? (
-          <AuthScreen onAuthComplete={(profile) => setCurrentUser(profile)} />
+          <div className="w-full h-full transform-gpu [will-change:transform] [backface-visibility:hidden]" style={{ willChange: 'transform', backfaceVisibility: 'hidden' }}>
+            <AuthScreen onAuthComplete={(profile) => setCurrentUser(profile)} />
+          </div>
         ) : (
           <>
             {/* Global Persistent Audio Player Banner across screens */}
@@ -2369,190 +2387,200 @@ export default function App() {
               }}
             />
 
-            {/* Navigational Screens */}
+            {/* Navigational Screens with GPU Acceleration */}
             {activeScreen === 'chatList' && (
-              <ChatListScreen
-                currentUser={currentUser}
-                isOffline={isOffline}
-                onSelectChat={(chatId, peer, targetMessageId) => {
-                  setSelectedChatId(chatId);
-                  setSelectedPeerProfile(peer);
-                  setSelectedTargetMsgId(targetMessageId || null);
-                  setActiveScreen('chat');
-                }}
-                onOpenSettings={() => setActiveScreen('settings')}
-                onOpenSearch={() => setActiveScreen('search')}
-                onOpenNotifications={() => setShowNotificationCenter(true)}
-                allProfiles={allProfiles}
-                messagesList={messagesList}
-                readReceipts={readReceipts}
-                getUnreadCount={getUnreadCount}
-                unreadNotificationsCount={getUnifiedFeed().length}
-                groups={groups}
-                groupCallStatuses={groupCallStatuses}
-                onViewProfileDetail={(type, data) => setActiveProfileView({ type, data })}
-              />
+              <div className="w-full h-full transform-gpu [will-change:transform] [backface-visibility:hidden]" style={{ willChange: 'transform', backfaceVisibility: 'hidden' }}>
+                <ChatListScreen
+                  currentUser={currentUser}
+                  isOffline={isOffline}
+                  onSelectChat={(chatId, peer, targetMessageId) => {
+                    setSelectedChatId(chatId);
+                    setSelectedPeerProfile(peer);
+                    setSelectedTargetMsgId(targetMessageId || null);
+                    setActiveScreen('chat');
+                  }}
+                  onOpenSettings={() => setActiveScreen('settings')}
+                  onOpenSearch={() => setActiveScreen('search')}
+                  onOpenNotifications={() => setShowNotificationCenter(true)}
+                  allProfiles={allProfiles}
+                  messagesList={messagesList}
+                  readReceipts={readReceipts}
+                  getUnreadCount={getUnreadCount}
+                  unreadNotificationsCount={getUnifiedFeed().length}
+                  groups={groups}
+                  groupCallStatuses={groupCallStatuses}
+                  onViewProfileDetail={(type, data) => setActiveProfileView({ type, data })}
+                />
+              </div>
             )}
 
             {activeScreen === 'chat' && selectedChatId && (
-              <ChatScreen
-                chatId={selectedChatId}
-                peerProfile={selectedPeerProfile}
-                currentUser={currentUser}
-                targetMessageId={selectedTargetMsgId}
-                onBack={() => {
-                  setSelectedChatId(null);
-                  setSelectedPeerProfile(undefined);
-                  setSelectedTargetMsgId(null);
-                  setActiveScreen('chatList');
-                }}
-                onCall={handleInitiateCall}
-                onJoinGroupCall={handleJoinGroupCall}
-                groupCallStatuses={groupCallStatuses}
-                messagesList={messagesList}
-                allProfiles={allProfiles}
-                callHistory={callHistory}
-                typingUsers={typingState[selectedChatId] || {}}
-                readReceipts={readReceipts}
-                reactions={reactions}
-                onToggleReaction={handleToggleReaction}
-                sendBroadcastEvent={sendBroadcastEvent}
-                pinnedMessageIds={pinnedState[selectedChatId] || []}
-                onTogglePin={(msgId) => handleTogglePin(selectedChatId, msgId)}
-                onSelectChat={(chatId, peer, targetMessageId) => {
-                  setSelectedChatId(chatId);
-                  setSelectedPeerProfile(peer);
-                  setSelectedTargetMsgId(targetMessageId || null);
-                  setActiveScreen('chat');
-                }}
-                onSendMessage={(msg) => {
-                  setMessagesList((prev) => addOrUpdateMessage(prev, msg));
-                }}
-                groups={groups}
-                chatTheme={chatThemes[selectedChatId]}
-                onUpdateChatTheme={(cid, theme) => {
-                  setChatThemes((prev) => ({ ...prev, [cid]: theme }));
-                }}
-                onUpdateGroup={(updatedGrp) => {
-                  setGroups((prev) => prev.map((g) => g.id === updatedGrp.id ? updatedGrp : g));
-                }}
-                onDisbandGroup={(groupId) => {
-                  setGroups((prev) => prev.filter((g) => g.id !== groupId));
-                  setSelectedChatId(null);
-                  setSelectedPeerProfile(undefined);
-                  setActiveScreen('chatList');
-                }}
-                onViewProfileDetail={(type, data) => setActiveProfileView({ type, data })}
-              />
+              <div className="w-full h-full transform-gpu [will-change:transform] [backface-visibility:hidden]" style={{ willChange: 'transform', backfaceVisibility: 'hidden' }}>
+                <ChatScreen
+                  chatId={selectedChatId}
+                  peerProfile={selectedPeerProfile}
+                  currentUser={currentUser}
+                  targetMessageId={selectedTargetMsgId}
+                  onBack={() => {
+                    setSelectedChatId(null);
+                    setSelectedPeerProfile(undefined);
+                    setSelectedTargetMsgId(null);
+                    setActiveScreen('chatList');
+                  }}
+                  onCall={handleInitiateCall}
+                  onJoinGroupCall={handleJoinGroupCall}
+                  groupCallStatuses={groupCallStatuses}
+                  messagesList={messagesList}
+                  allProfiles={allProfiles}
+                  callHistory={callHistory}
+                  typingUsers={typingState[selectedChatId] || {}}
+                  readReceipts={readReceipts}
+                  reactions={reactions}
+                  onToggleReaction={handleToggleReaction}
+                  sendBroadcastEvent={sendBroadcastEvent}
+                  pinnedMessageIds={pinnedState[selectedChatId] || []}
+                  onTogglePin={(msgId) => handleTogglePin(selectedChatId, msgId)}
+                  onSelectChat={(chatId, peer, targetMessageId) => {
+                    setSelectedChatId(chatId);
+                    setSelectedPeerProfile(peer);
+                    setSelectedTargetMsgId(targetMessageId || null);
+                    setActiveScreen('chat');
+                  }}
+                  onSendMessage={(msg) => {
+                    setMessagesList((prev) => addOrUpdateMessage(prev, msg));
+                  }}
+                  groups={groups}
+                  chatTheme={chatThemes[selectedChatId]}
+                  onUpdateChatTheme={(cid, theme) => {
+                    setChatThemes((prev) => ({ ...prev, [cid]: theme }));
+                  }}
+                  onUpdateGroup={(updatedGrp) => {
+                    setGroups((prev) => prev.map((g) => g.id === updatedGrp.id ? updatedGrp : g));
+                  }}
+                  onDisbandGroup={(groupId) => {
+                    setGroups((prev) => prev.filter((g) => g.id !== groupId));
+                    setSelectedChatId(null);
+                    setSelectedPeerProfile(undefined);
+                    setActiveScreen('chatList');
+                  }}
+                  onViewProfileDetail={(type, data) => setActiveProfileView({ type, data })}
+                />
+              </div>
             )}
 
             {activeScreen === 'search' && (
-              <SearchScreen
-                currentUser={currentUser}
-                onCancel={() => setActiveScreen('chatList')}
-                allProfiles={allProfiles}
-                onSelectUser={(peer) => {
-                  // Generate DM chat_id based on sorted UUIDs
-                  const sortedIds = [currentUser.id, peer.id].sort();
-                  const dmId = `dm:${sortedIds[0]}:${sortedIds[1]}`;
-                  setSelectedChatId(dmId);
-                  setSelectedPeerProfile(peer);
-                  setActiveScreen('chat');
-                }}
-                onCreateGroup={(name, icon, memberIds) => {
-                  const newGroup: Group = {
-                    id: `group:${Date.now()}`,
-                    name,
-                    icon,
-                    creator_id: currentUser.id,
-                    members: [currentUser.id, ...memberIds],
-                    created_at: new Date().toISOString()
-                  };
-                  setGroups((prev) => [...prev, newGroup]);
-                  
-                  // Broadcast group creation to other users
-                  sendBroadcastEvent('vyper_group_created', { group: newGroup });
+              <div className="w-full h-full transform-gpu [will-change:transform] [backface-visibility:hidden]" style={{ willChange: 'transform', backfaceVisibility: 'hidden' }}>
+                <SearchScreen
+                  currentUser={currentUser}
+                  onCancel={() => setActiveScreen('chatList')}
+                  allProfiles={allProfiles}
+                  onSelectUser={(peer) => {
+                    // Generate DM chat_id based on sorted UUIDs
+                    const sortedIds = [currentUser.id, peer.id].sort();
+                    const dmId = `dm:${sortedIds[0]}:${sortedIds[1]}`;
+                    setSelectedChatId(dmId);
+                    setSelectedPeerProfile(peer);
+                    setActiveScreen('chat');
+                  }}
+                  onCreateGroup={(name, icon, memberIds) => {
+                    const newGroup: Group = {
+                      id: `group:${Date.now()}`,
+                      name,
+                      icon,
+                      creator_id: currentUser.id,
+                      members: [currentUser.id, ...memberIds],
+                      created_at: new Date().toISOString()
+                    };
+                    setGroups((prev) => [...prev, newGroup]);
+                    
+                    // Broadcast group creation to other users
+                    sendBroadcastEvent('vyper_group_created', { group: newGroup });
 
-                  // Automatically select the new group
-                  setSelectedChatId(newGroup.id);
-                  setSelectedPeerProfile(undefined);
-                  setActiveScreen('chat');
+                    // Automatically select the new group
+                    setSelectedChatId(newGroup.id);
+                    setSelectedPeerProfile(undefined);
+                    setActiveScreen('chat');
 
-                  // Inject welcome message
-                  const welcomeMsg: Message = {
-                    id: `msg_grp_welcome_${Date.now()}`,
-                    chat_id: newGroup.id,
-                    sender_id: currentUser.id,
-                    text: `🔒 System Update: Secure group channel "${name}" has been established by Admin. End-to-end multi-party encryption initialized.`,
-                    file_name: null,
-                    file_type: null,
-                    file_data: null,
-                    is_voice: false,
-                    created_at: new Date().toISOString()
-                  };
-                  setMessagesList((prev) => addOrUpdateMessage(prev, welcomeMsg));
-                }}
-              />
+                    // Inject welcome message
+                    const welcomeMsg: Message = {
+                      id: `msg_grp_welcome_${Date.now()}`,
+                      chat_id: newGroup.id,
+                      sender_id: currentUser.id,
+                      text: `🔒 System Update: Secure group channel "${name}" has been established by Admin. End-to-end multi-party encryption initialized.`,
+                      file_name: null,
+                      file_type: null,
+                      file_data: null,
+                      is_voice: false,
+                      created_at: new Date().toISOString()
+                    };
+                    setMessagesList((prev) => addOrUpdateMessage(prev, welcomeMsg));
+                  }}
+                />
+              </div>
             )}
 
             {activeScreen === 'calls' && (
-              <CallsScreen
-                currentUser={currentUser}
-                allProfiles={allProfiles}
-                callHistory={callHistory}
-                onInitiateCall={handleInitiateCall}
-                onViewProfileDetail={(type, data) => setActiveProfileView({ type, data })}
-              />
+              <div className="w-full h-full transform-gpu [will-change:transform] [backface-visibility:hidden]" style={{ willChange: 'transform', backfaceVisibility: 'hidden' }}>
+                <CallsScreen
+                  currentUser={currentUser}
+                  allProfiles={allProfiles}
+                  callHistory={callHistory}
+                  onInitiateCall={handleInitiateCall}
+                  onViewProfileDetail={(type, data) => setActiveProfileView({ type, data })}
+                />
+              </div>
             )}
 
             {activeScreen === 'settings' && (
-              <SettingsScreen
-                currentUser={currentUser}
-                allProfiles={allProfiles}
-                appTheme={appTheme}
-                onUpdateAppTheme={setAppTheme}
-                onBack={() => setActiveScreen('chatList')}
-                onLogout={async () => {
-                  try {
-                    await supabase
-                      .from('profiles')
-                      .update({ is_online: false, last_seen: new Date().toISOString() })
-                      .eq('id', currentUser.id);
-                  } catch (e) {
-                    console.warn('Failed to update online status on logout:', e);
-                  }
-                  try {
-                    await supabase.auth.signOut();
-                  } catch (e) {
-                    console.warn('Failed to sign out of Supabase:', e);
-                  }
-                  // Reset states
-                  setMessagesList([]);
-                  setAllProfiles([]);
-                  setActiveCall(null);
-                  setGroupCallStatuses({});
-                  setCallHistory([]);
-                  setNotifications([]);
-                  setSelectedChatId(null);
-                  setSelectedPeerProfile(undefined);
-                  setActiveScreen('chatList');
-                  
-                  // Clear specific localStorage entries
-                  Object.keys(localStorage).forEach((key) => {
-                    if (
-                      (key.startsWith('vypervic_') && key !== 'vypervic_app_theme') ||
-                      key.startsWith('vyper_') ||
-                      key.includes('supabase') ||
-                      key.startsWith('sb-')
-                    ) {
-                      localStorage.removeItem(key);
+              <div className="w-full h-full transform-gpu [will-change:transform] [backface-visibility:hidden]" style={{ willChange: 'transform', backfaceVisibility: 'hidden' }}>
+                <SettingsScreen
+                  currentUser={currentUser}
+                  allProfiles={allProfiles}
+                  appTheme={appTheme}
+                  onUpdateAppTheme={setAppTheme}
+                  onBack={() => setActiveScreen('chatList')}
+                  onLogout={async () => {
+                    try {
+                      await supabase
+                        .from('profiles')
+                        .update({ is_online: false, last_seen: new Date().toISOString() })
+                        .eq('id', currentUser.id);
+                    } catch (e) {
+                      console.warn('Failed to update online status on logout:', e);
                     }
-                  });
-                  setCurrentUser(null);
-                }}
-                onUpdateProfile={(updated) => setCurrentUser(updated)}
-                onToast={showToast}
-              />
+                    try {
+                      await supabase.auth.signOut();
+                    } catch (e) {
+                      console.warn('Failed to sign out of Supabase:', e);
+                    }
+                    // Reset states
+                    setMessagesList([]);
+                    setAllProfiles([]);
+                    setActiveCall(null);
+                    setGroupCallStatuses({});
+                    setCallHistory([]);
+                    setNotifications([]);
+                    setSelectedChatId(null);
+                    setSelectedPeerProfile(undefined);
+                    setActiveScreen('chatList');
+                    
+                    // Clear specific localStorage entries
+                    Object.keys(localStorage).forEach((key) => {
+                      if (
+                        (key.startsWith('vypervic_') && key !== 'vypervic_app_theme') ||
+                        key.startsWith('vyper_') ||
+                        key.includes('supabase') ||
+                        key.startsWith('sb-')
+                      ) {
+                        localStorage.removeItem(key);
+                      }
+                    });
+                    setCurrentUser(null);
+                  }}
+                  onUpdateProfile={(updated) => setCurrentUser(updated)}
+                  onToast={showToast}
+                />
+              </div>
             )}
 
             {/* Floating Pill Navigation Bar (Liquid Glass or Neumorphism based on theme) */}

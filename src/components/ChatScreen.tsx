@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef, ChangeEvent, FormEvent, useMemo } from 'react';
+import React, { useState, useEffect, useRef, ChangeEvent, FormEvent, useMemo, useDeferredValue, memo } from 'react';
 import { supabase } from '../supabase';
 import { Profile, Message, Group, ThemeConfig, Call } from '../types';
 import { 
   ArrowLeft, Phone, Video, Paperclip, Send, Camera, Mic, Square, Trash, Play, Pause, Smile, X, 
   Check, CheckCheck, CornerUpLeft, Pin, Shield, MoreVertical, Image, Palette, FileText, 
   ExternalLink, Trash2, PlusCircle, CheckCircle, Info, Users, Download, Link, UserPlus, UserMinus,
-  RotateCw, Type, PenTool, Sparkles, Forward, PhoneOff, Upload, Star, Copy, Edit3, Ban, ChevronDown, Clock, FastForward
+  RotateCw, Type, PenTool, Sparkles, Forward, PhoneOff, Upload, Star, Copy, Edit3, Ban, ChevronDown, Clock, FastForward, Search
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { isUserOnline, formatLastSeen, getContactDisplayName, parseProfileAbout } from '../utils/customNames';
@@ -65,7 +65,7 @@ interface ChatScreenProps {
   onViewProfileDetail?: (type: 'user' | 'group' | 'general', data?: any) => void;
 }
 
-export default function ChatScreen({
+function ChatScreen({
   chatId,
   peerProfile,
   currentUser,
@@ -137,6 +137,9 @@ export default function ChatScreen({
   }, [showDropdown]);
 
   const [showThemePicker, setShowThemePicker] = useState(false);
+  const [showSearchMessages, setShowSearchMessages] = useState(false);
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [searchSenderId, setSearchSenderId] = useState('all');
   const [showMediaLinksDocs, setShowMediaLinksDocs] = useState(false);
   const [activeMediaTab, setActiveMediaTab] = useState<'media' | 'links' | 'docs'>('media');
   const [showGroupProfile, setShowGroupProfile] = useState(false);
@@ -153,6 +156,19 @@ export default function ChatScreen({
       return '';
     }
   });
+
+  // Decoupled deferred input value for instant character rendering without re-render blocking
+  const deferredText = useDeferredValue(text);
+
+  // Call Details Modal State
+  const [selectedCallDetails, setSelectedCallDetails] = useState<{
+    callId: string;
+    type: string;
+    callerId: string;
+    callerName: string;
+    status: string;
+    created_at?: string;
+  } | null>(null);
 
   // Sync draft from memory when chat room changes
   useEffect(() => {
@@ -182,7 +198,7 @@ export default function ChatScreen({
 
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [sending, setSending] = useState(false);
   const [fileBase64, setFileBase64] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -499,7 +515,16 @@ export default function ChatScreen({
     };
   }, [chatId]);
 
-  const handleTextChange = (e: ChangeEvent<HTMLInputElement>) => {
+  // Auto-resize input textarea up to 10 paragraphs (~240px) height before internal scrolling
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+      const newHeight = Math.min(inputRef.current.scrollHeight, 240);
+      inputRef.current.style.height = `${newHeight}px`;
+    }
+  }, [text]);
+
+  const handleTextChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const val = e.target.value;
     setText(val);
 
@@ -1254,6 +1279,79 @@ export default function ChatScreen({
   const isGroup = chatId === 'general' || chatId.startsWith('group:');
   const currentGroup = useMemo(() => groups.find((g) => g.id === chatId), [groups, chatId]);
 
+  // Message Search participant senders list
+  const chatParticipants = useMemo(() => {
+    const ids = Array.from(new Set(chatMessages.map((m) => m.sender_id)));
+    if (!ids.includes(currentUser.id)) ids.push(currentUser.id);
+    if (peerProfile && !ids.includes(peerProfile.id)) ids.push(peerProfile.id);
+    if (currentGroup?.members) {
+      currentGroup.members.forEach((mId) => {
+        if (!ids.includes(mId)) ids.push(mId);
+      });
+    }
+
+    return ids.map((id) => {
+      const isMe = id === currentUser.id;
+      const prof = allProfiles.find((p) => p.id === id);
+      const name = isMe ? 'You' : (prof?.display_name || prof?.username || 'Operator');
+      return {
+        id,
+        name,
+        username: prof?.username,
+        avatar: prof?.avatar_url,
+      };
+    });
+  }, [chatMessages, currentUser.id, peerProfile, currentGroup, allProfiles]);
+
+  // Filtered search messages by keyword or sender
+  const filteredSearchMessages = useMemo(() => {
+    if (!showSearchMessages) return [];
+    const query = searchKeyword.toLowerCase().trim();
+
+    return chatMessages.filter((msg) => {
+      if (searchSenderId !== 'all' && msg.sender_id !== searchSenderId) {
+        return false;
+      }
+
+      if (!query) return true;
+
+      let textToMatch = msg.text || '';
+      if (textToMatch.startsWith('_vyper_reply_::')) {
+        try {
+          const meta = JSON.parse(textToMatch.substring('_vyper_reply_::'.length));
+          textToMatch = `${meta.reply_to_name || ''} ${meta.reply_to_text || ''} ${meta.text || ''}`;
+        } catch {
+          // fallback
+        }
+      } else if (textToMatch.startsWith('_vyper_call_::')) {
+        textToMatch = 'Call';
+      } else if (textToMatch.startsWith('[Forwarded]: ')) {
+        textToMatch = textToMatch.substring('[Forwarded]: '.length);
+      }
+
+      const matchesText = textToMatch.toLowerCase().includes(query);
+      const matchesFile = msg.file_name ? msg.file_name.toLowerCase().includes(query) : false;
+
+      const senderProf = allProfiles.find((p) => p.id === msg.sender_id);
+      const senderName = msg.sender_id === currentUser.id ? 'you' : (senderProf?.display_name || senderProf?.username || '').toLowerCase();
+      const matchesSenderName = senderName.includes(query);
+
+      return matchesText || matchesFile || matchesSenderName;
+    });
+  }, [chatMessages, searchKeyword, searchSenderId, showSearchMessages, allProfiles, currentUser.id]);
+
+  const handleJumpToMessage = (msgId: string) => {
+    setShowSearchMessages(false);
+    setTimeout(() => {
+      const el = document.getElementById(`msg-${msgId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setHighlightedMsgId(msgId);
+        setTimeout(() => setHighlightedMsgId(null), 2500);
+      }
+    }, 100);
+  };
+
   const onlineCount = useMemo(() => {
     if (!currentGroup) return 0;
     return (currentGroup.members || []).filter((memId) => {
@@ -1292,6 +1390,73 @@ export default function ChatScreen({
   }, [showGroupProfile, currentGroup]);
 
   const isMeSpace = chatId.startsWith('me:');
+
+  const handleExportChat = () => {
+    if (!chatMessages || chatMessages.length === 0) {
+      setLocalToast('No messages to export');
+      setTimeout(() => setLocalToast(null), 2500);
+      return;
+    }
+
+    const chatTitle = currentGroup
+      ? currentGroup.name
+      : isMeSpace
+      ? 'Me (Personal Vault)'
+      : chatId === 'general'
+      ? 'VyperVic General'
+      : peerProfile
+      ? (peerProfile.display_name || peerProfile.username || 'Chat')
+      : 'Exported Chat';
+
+    let exportText = `========================================\n`;
+    exportText += `CHAT EXPORT: ${chatTitle}\n`;
+    exportText += `Export Date: ${new Date().toLocaleString()}\n`;
+    exportText += `Total Messages: ${chatMessages.length}\n`;
+    exportText += `========================================\n\n`;
+
+    chatMessages.forEach((msg) => {
+      const time = new Date(msg.created_at).toLocaleString();
+      const sender = allProfiles.find((p) => p.id === msg.sender_id);
+      const senderName = msg.sender_id === currentUser.id 
+        ? 'You' 
+        : (sender?.display_name || sender?.username || 'Operator');
+
+      let msgContent = msg.text || '';
+      if (msgContent.startsWith('_vyper_reply_::')) {
+        try {
+          const meta = JSON.parse(msgContent.substring('_vyper_reply_::'.length));
+          msgContent = `[Replying to ${meta.reply_to_name || 'Message'}: "${meta.reply_to_text || ''}"] ${meta.text || ''}`;
+        } catch {
+          // fallback
+        }
+      } else if (msgContent.startsWith('_vyper_call_::')) {
+        msgContent = '[Voice/Video Call Record]';
+      }
+
+      if (msg.file_name) {
+        msgContent += ` [Attachment: ${msg.file_name}]`;
+      }
+      if (msg.is_voice) {
+        msgContent += ` [Voice Note]`;
+      }
+
+      exportText += `[${time}] ${senderName}: ${msgContent}\n`;
+    });
+
+    const blob = new Blob([exportText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const sanitizedTitle = chatTitle.replace(/[^a-zA-Z0-9_-]/g, '_');
+    a.download = `${sanitizedTitle}_Export_${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    setLocalToast('Chat exported as text file');
+    setTimeout(() => setLocalToast(null), 2500);
+  };
   const thinkingText = useMemo(() => {
     if (currentGroup || chatId === 'general') return null;
     const targetProfile = isMeSpace ? currentUser : peerProfile;
@@ -1938,7 +2103,10 @@ export default function ChatScreen({
                           };
                           
                           return (
-                            <div className="flex flex-col gap-2 p-1 min-w-[210px] select-none text-left">
+                            <div 
+                              onClick={() => setSelectedCallDetails({ callId, type, callerId, callerName, status, created_at: msg.created_at })}
+                              className="flex flex-col gap-2 p-1 min-w-[210px] select-none text-left cursor-pointer hover:opacity-95 transition-opacity"
+                            >
                               <div className="flex items-center gap-3">
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center relative flex-shrink-0 ${
                                   isEnded 
@@ -2533,15 +2701,21 @@ export default function ChatScreen({
           </div>
         ) : (
           /* Text area / message input controls flow */
-          <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-            <div className="flex-1 flex items-center bg-[#161d28] border border-[#212a38] focus-within:border-[#7c5cff] rounded-2xl px-3.5 py-2.5 transition-colors">
-              <input
-                type="text"
+          <form onSubmit={handleSendMessage} className="flex items-end gap-2">
+            <div className="flex-1 flex items-center bg-[#161d28] border border-[#212a38] focus-within:border-[#7c5cff] rounded-2xl px-3.5 py-2 transition-colors min-h-[44px]">
+              <textarea
                 ref={inputRef}
+                rows={1}
                 placeholder="Type a message..."
-                className="flex-1 bg-transparent border-none outline-none text-xs text-[#eef1f6] font-semibold placeholder-[#5a6478]"
+                className="flex-1 bg-transparent border-none outline-none text-xs text-[#eef1f6] font-semibold placeholder-[#5a6478] resize-none max-h-[240px] overflow-y-auto leading-relaxed py-1"
                 value={text}
                 onChange={handleTextChange}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage(e as any);
+                  }
+                }}
               />
             </div>
 
@@ -3496,14 +3670,224 @@ export default function ChatScreen({
               </button>
             )}
             <button
-              onClick={() => { setShowDropdown(false); setShowThemePicker(true); }}
+              onClick={() => { setShowDropdown(false); setShowSearchMessages(true); }}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 text-left text-xs font-semibold text-white transition-colors cursor-pointer border-t border-[#212a38]/45 pt-2.5 mt-1"
+            >
+              <Search className="w-4 h-4 text-[#20e3a2]" />
+              Message Search
+            </button>
+            <button
+              onClick={() => { setShowDropdown(false); setShowThemePicker(true); }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 text-left text-xs font-semibold text-white transition-colors cursor-pointer"
             >
               <Palette className="w-4 h-4 text-[#20e3a2]" />
               Chat Theme
             </button>
+            <button
+              onClick={() => { setShowDropdown(false); handleExportChat(); }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 text-left text-xs font-semibold text-white transition-colors cursor-pointer border-t border-[#212a38]/45 pt-2.5 mt-1"
+            >
+              <Download className="w-4 h-4 text-[#20e3a2]" />
+              Export Chat
+            </button>
           </div>
         </>
+      )}
+
+      {/* Message Search Full Screen Overlay Page */}
+      {showSearchMessages && (
+        <div className="fixed inset-0 bg-[#080b10]/85 backdrop-blur-3xl z-[100] flex flex-col p-4 md:p-6 animate-fade-in overflow-hidden shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]">
+          {/* Header Bar */}
+          <div className="flex items-center gap-3 border-b border-white/10 pb-4 mb-4 shrink-0">
+            <button
+              onClick={() => {
+                setShowSearchMessages(false);
+                setSearchKeyword('');
+                setSearchSenderId('all');
+              }}
+              className="w-10 h-10 rounded-full bg-white/5 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:text-[#20e3a2] cursor-pointer hover:bg-white/15 transition-all shrink-0"
+              title="Close search"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-display font-bold text-sm text-white flex items-center gap-2">
+                <Search className="w-4 h-4 text-[#20e3a2]" />
+                <span>Message Search</span>
+              </h3>
+              <p className="text-[10px] text-[#8d97ab] truncate mt-0.5">
+                Filter messages in this chat by keyword or sender
+              </p>
+            </div>
+          </div>
+
+          {/* Search Inputs (Keyword & Sender Filter) */}
+          <div className="space-y-3 shrink-0 mb-4">
+            {/* Keyword Input */}
+            <div className="relative flex items-center">
+              <Search className="w-4 h-4 text-[#8d97ab] absolute left-3.5 pointer-events-none" />
+              <input
+                type="text"
+                value={searchKeyword}
+                onChange={(e) => setSearchKeyword(e.target.value)}
+                placeholder="Search messages by keyword..."
+                className="w-full bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl pl-10 pr-10 py-2.5 text-xs font-semibold text-white placeholder-[#5a6478] outline-none focus:border-[#20e3a2]/70 focus:bg-white/10 transition-all shadow-inner"
+                autoFocus
+              />
+              {searchKeyword && (
+                <button
+                  type="button"
+                  onClick={() => setSearchKeyword('')}
+                  className="absolute right-3 p-1 rounded-full text-[#8d97ab] hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Sender Filter Chips */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+              <span className="text-[10px] font-bold text-[#8d97ab] uppercase font-mono shrink-0 mr-1">
+                Sender:
+              </span>
+              <button
+                type="button"
+                onClick={() => setSearchSenderId('all')}
+                className={`px-3 py-1.5 rounded-xl text-[10.5px] font-bold transition-all shrink-0 cursor-pointer backdrop-blur-lg ${
+                  searchSenderId === 'all'
+                    ? 'bg-[#20e3a2] text-black shadow-md shadow-[#20e3a2]/20'
+                    : 'bg-white/5 border border-white/10 text-[#8d97ab] hover:text-white hover:bg-white/10'
+                }`}
+              >
+                All Senders
+              </button>
+
+              {chatParticipants.map((sender) => {
+                const isSelected = searchSenderId === sender.id;
+                return (
+                  <button
+                    key={sender.id}
+                    type="button"
+                    onClick={() => setSearchSenderId(sender.id)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10.5px] font-bold transition-all shrink-0 cursor-pointer backdrop-blur-lg ${
+                      isSelected
+                        ? 'bg-[#7c5cff] text-white shadow-md shadow-[#7c5cff]/20'
+                        : 'bg-white/5 border border-white/10 text-[#8d97ab] hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    <span className="w-4 h-4 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-[8px] bg-black/30 font-bold">
+                      {sender.avatar ? (
+                        <img src={sender.avatar} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        sender.name.substring(0, 1).toUpperCase()
+                      )}
+                    </span>
+                    <span className="truncate max-w-[110px]">{sender.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Results Summary Count */}
+          <div className="flex items-center justify-between text-[11px] font-mono text-[#8d97ab] border-b border-white/10 pb-2.5 mb-3 shrink-0">
+            <span>
+              {filteredSearchMessages.length} message{filteredSearchMessages.length === 1 ? '' : 's'} found
+            </span>
+            {(searchKeyword || searchSenderId !== 'all') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchKeyword('');
+                  setSearchSenderId('all');
+                }}
+                className="text-[10px] text-[#20e3a2] hover:underline cursor-pointer font-bold"
+              >
+                Reset filters
+              </button>
+            )}
+          </div>
+
+          {/* Messages Results List */}
+          <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
+            {filteredSearchMessages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center animate-fade-in">
+                <Search className="w-10 h-10 text-[#5a6478] mb-3 opacity-40" />
+                <p className="text-xs font-bold text-white mb-1">No matching messages</p>
+                <p className="text-[10px] text-[#8d97ab] max-w-xs">
+                  Try adjusting your search keyword or selecting a different sender filter.
+                </p>
+              </div>
+            ) : (
+              filteredSearchMessages.map((msg) => {
+                const isMe = msg.sender_id === currentUser.id;
+                const senderProf = allProfiles.find((p) => p.id === msg.sender_id);
+                const senderName = isMe ? 'You' : (senderProf?.display_name || senderProf?.username || 'Operator');
+                const senderSeed = senderProf?.username?.charCodeAt(0) || 0;
+
+                let excerpt = msg.text || '';
+                if (excerpt.startsWith('_vyper_reply_::')) {
+                  try {
+                    const meta = JSON.parse(excerpt.substring('_vyper_reply_::'.length));
+                    excerpt = meta.text;
+                  } catch (e) {}
+                } else if (excerpt.startsWith('_vyper_call_::')) {
+                  excerpt = '📞 Call Message';
+                } else if (excerpt.startsWith('[Forwarded]: ')) {
+                  excerpt = excerpt.substring('[Forwarded]: '.length);
+                }
+
+                return (
+                  <div
+                    key={msg.id}
+                    onClick={() => handleJumpToMessage(msg.id)}
+                    className="p-3.5 rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 hover:border-[#20e3a2]/50 hover:bg-white/10 transition-all cursor-pointer flex items-start gap-3 group animate-fade-in shadow-sm"
+                  >
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-sm shrink-0 mt-0.5"
+                      style={{
+                        background: senderProf?.avatar_url ? 'none' : getAvatarStyle(senderSeed),
+                      }}
+                    >
+                      {senderProf?.avatar_url ? (
+                        <img
+                          src={senderProf.avatar_url}
+                          alt="Sender"
+                          className="w-full h-full rounded-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        getInitials(senderName)
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-xs font-bold text-white group-hover:text-[#20e3a2] transition-colors truncate">
+                          {senderName}
+                        </span>
+                        <span className="text-[9.5px] font-mono text-[#8d97ab] shrink-0">
+                          {new Date(msg.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })} {formatMsgTime(msg.created_at)}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-[#eef1f6] leading-relaxed break-words font-medium line-clamp-3">
+                        {excerpt || (msg.is_voice ? '🎤 Voice Note' : msg.file_name ? `📎 ${msg.file_name}` : '')}
+                      </p>
+
+                      {msg.file_name && (
+                        <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-[#20e3a2] font-mono">
+                          <Paperclip className="w-3 h-3" />
+                          <span className="truncate">{msg.file_name}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
       )}
 
       {/* Theme Selection Picker Drawer (Requirement 7) */}
@@ -4897,7 +5281,106 @@ export default function ChatScreen({
           </div>
         );
       })()}
+
+      {/* Selected Call Details Modal Overlay */}
+      {selectedCallDetails && (() => {
+        const isVoice = selectedCallDetails.type === 'voice';
+        const isEnded = selectedCallDetails.status === 'ended' || selectedCallDetails.status === 'terminated';
+
+        return (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-xl z-[120] flex items-center justify-center p-4 animate-fade-in">
+            <div className="w-full max-w-sm bg-slate-900/95 backdrop-blur-2xl border border-white/20 rounded-3xl p-6 shadow-2xl space-y-5 text-center relative overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#20e3a2] via-[#7c5cff] to-[#38bdf8]" />
+              
+              <button
+                type="button"
+                onClick={() => setSelectedCallDetails(null)}
+                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/10 border border-white/15 flex items-center justify-center text-white/70 hover:text-white cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="pt-2 flex flex-col items-center">
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center border-2 mb-3 shadow-xl ${
+                  isVoice ? 'bg-[#20e3a2]/20 border-[#20e3a2] text-[#20e3a2]' : 'bg-[#7c5cff]/20 border-[#7c5cff] text-[#7c5cff]'
+                }`}>
+                  {isVoice ? <Phone className="w-8 h-8 fill-current" /> : <Video className="w-8 h-8" />}
+                </div>
+
+                <h3 className="font-display font-bold text-lg text-white">
+                  {isVoice ? 'Voice Call Details' : 'Video Call Details'}
+                </h3>
+                <p className="text-xs text-white/50 mt-0.5">
+                  Initiated by {selectedCallDetails.callerId === currentUser.id ? 'You' : selectedCallDetails.callerName}
+                </p>
+              </div>
+
+              {/* Call Details Summary */}
+              <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3 text-left">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-white/50 flex items-center gap-1.5">
+                    <Info className="w-3.5 h-3.5 text-[#38bdf8]" />
+                    Call Status
+                  </span>
+                  <span className={`font-bold capitalize ${isEnded ? 'text-white/60' : 'text-[#20e3a2]'}`}>
+                    {selectedCallDetails.status || 'Ended'}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-white/50 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-[#7c5cff]" />
+                    Date & Time
+                  </span>
+                  <span className="font-mono text-[11px] text-white/80">
+                    {selectedCallDetails.created_at ? new Date(selectedCallDetails.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Recent'}
+                  </span>
+                </div>
+
+                <div className="pt-2 border-t border-white/10 flex items-center justify-between text-[11px]">
+                  <span className="text-white/40 flex items-center gap-1 font-mono">
+                    <Shield className="w-3 h-3 text-[#20e3a2]" />
+                    E2E Relayed
+                  </span>
+                  <span className="text-white/30 font-mono text-[10px]">
+                    ID: {selectedCallDetails.callId.substring(0, 12)}...
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-1">
+                {!isEnded && onJoinGroupCall ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const { callId, type, callerId } = selectedCallDetails;
+                      setSelectedCallDetails(null);
+                      onJoinGroupCall(callId, type as 'voice' | 'video', callerId);
+                    }}
+                    className={`w-full py-3 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-95 transition-all ${
+                      isVoice ? 'bg-[#20e3a2] text-black hover:bg-[#1bc78e]' : 'bg-[#7c5cff] text-white hover:bg-[#6948f2]'
+                    }`}
+                  >
+                    Join Live Call Now
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCallDetails(null)}
+                    className="w-full py-2.5 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/15 text-xs font-bold text-white transition-all cursor-pointer active:scale-95"
+                  >
+                    Close Details
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
+
+export default memo(ChatScreen);
 

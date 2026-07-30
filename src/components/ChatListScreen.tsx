@@ -1,6 +1,6 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, memo, useRef } from 'react';
 import { Profile, Message, Group } from '../types';
-import { Search, Settings, MessageSquare, Shield, Circle, User, Bell, Users, WifiOff, MoreHorizontal, Archive, Lock, X, Star } from 'lucide-react';
+import { Search, Settings, MessageSquare, Shield, Circle, User, Bell, Users, WifiOff, MoreHorizontal, Archive, Lock, X, Star, ArrowLeft, Paperclip, Pin, Trash2, Mail, CheckCircle, Unlock } from 'lucide-react';
 import { getContactDisplayName, isUserOnline } from '../utils/customNames';
 
 interface ChatListScreenProps {
@@ -20,7 +20,7 @@ interface ChatListScreenProps {
   onViewProfileDetail?: (type: 'user' | 'group' | 'general', data?: any) => void;
 }
 
-export default function ChatListScreen({
+function ChatListScreen({
   currentUser,
   onSelectChat,
   onOpenSettings,
@@ -43,6 +43,153 @@ export default function ChatListScreen({
   const [showStarredModal, setShowStarredModal] = useState(false);
   const [showSearchMessagesModal, setShowSearchMessagesModal] = useState(false);
   const [searchMessageQuery, setSearchMessageQuery] = useState('');
+  const [searchSenderId, setSearchSenderId] = useState('all');
+
+  // Persistent chat management states stored in localStorage
+  const [pinnedChats, setPinnedChats] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('vyper_pinned_chats');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+
+  const [archivedChats, setArchivedChats] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('vyper_archived_chats');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+
+  const [lockedChats, setLockedChats] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('vyper_locked_chats');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+
+  const [unreadMarkedChats, setUnreadMarkedChats] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('vyper_unread_marked_chats');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+
+  const [deletedChats, setDeletedChats] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('vyper_deleted_chats');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+
+  // Long press active menu context state
+  const [activeLongPressChat, setActiveLongPressChat] = useState<{
+    chatId: string;
+    isGroup: boolean;
+    peer?: Profile;
+    name?: string;
+    icon?: string;
+    lastMsg?: any;
+    unreadCount: number;
+  } | null>(null);
+
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+
+  const togglePinChat = (chatId: string) => {
+    setPinnedChats((prev) => {
+      const updated = prev.includes(chatId) ? prev.filter((id) => id !== chatId) : [...prev, chatId];
+      try { localStorage.setItem('vyper_pinned_chats', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+    setActiveLongPressChat(null);
+  };
+
+  const toggleArchiveChat = (chatId: string) => {
+    setArchivedChats((prev) => {
+      const updated = prev.includes(chatId) ? prev.filter((id) => id !== chatId) : [...prev, chatId];
+      try { localStorage.setItem('vyper_archived_chats', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+    setActiveLongPressChat(null);
+  };
+
+  const toggleLockChat = (chatId: string) => {
+    setLockedChats((prev) => {
+      const updated = prev.includes(chatId) ? prev.filter((id) => id !== chatId) : [...prev, chatId];
+      try { localStorage.setItem('vyper_locked_chats', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+    setActiveLongPressChat(null);
+  };
+
+  const toggleUnreadChat = (chatId: string) => {
+    setUnreadMarkedChats((prev) => {
+      const updated = prev.includes(chatId) ? prev.filter((id) => id !== chatId) : [...prev, chatId];
+      try { localStorage.setItem('vyper_unread_marked_chats', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+    setActiveLongPressChat(null);
+  };
+
+  const handleDeleteConversation = (chatId: string) => {
+    setDeletedChats((prev) => {
+      const updated = prev.includes(chatId) ? prev : [...prev, chatId];
+      try { localStorage.setItem('vyper_deleted_chats', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+    setActiveLongPressChat(null);
+  };
+
+  const handleTouchStart = (sessionItem: any, e: React.TouchEvent | React.MouseEvent) => {
+    if ('touches' in e && e.touches.length > 0) {
+      touchStartPosRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    } else if ('clientX' in e) {
+      touchStartPosRef.current = { x: (e as React.MouseEvent).clientX, y: (e as React.MouseEvent).clientY };
+    }
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(50);
+      }
+      setActiveLongPressChat(sessionItem);
+    }, 500);
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent | React.MouseEvent) => {
+    if (!touchStartPosRef.current) return;
+    const currentX = 'touches' in e && e.touches.length > 0 ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+    const currentY = 'touches' in e && e.touches.length > 0 ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+    const diffX = Math.abs(currentX - touchStartPosRef.current.x);
+    const diffY = Math.abs(currentY - touchStartPosRef.current.y);
+    if (diffX > 10 || diffY > 10) {
+      handleTouchEnd();
+    }
+  };
+
+  // Compute unique senders list for Global Message Search filters
+  const chatParticipants = useMemo(() => {
+    const ids = Array.from(new Set(messagesList.map((m) => m.sender_id)));
+    if (currentUser?.id && !ids.includes(currentUser.id)) ids.push(currentUser.id);
+
+    return ids.map((id) => {
+      const isMe = id === currentUser.id;
+      const prof = allProfiles.find((p) => p.id === id);
+      const name = isMe ? 'You' : (prof?.display_name || prof?.username || 'Operator');
+      return {
+        id,
+        name,
+        username: prof?.username,
+        avatar: prof?.avatar_url,
+      };
+    });
+  }, [messagesList, currentUser.id, allProfiles]);
   useEffect(() => {
     const handleUpdate = () => setCustomNamesTick((t) => t + 1);
     window.addEventListener('vyper_custom_names_updated', handleUpdate);
@@ -216,13 +363,23 @@ export default function ChatListScreen({
       });
     });
 
-    // Sort conversations by latest message timestamp or fallback to 0
-    return sessions.sort((a, b) => {
+    // Filter out deleted chats, archived chats, or locked chats from main stream
+    const visibleSessions = sessions.filter(
+      (s) => !deletedChats.includes(s.chatId) && !archivedChats.includes(s.chatId) && !lockedChats.includes(s.chatId)
+    );
+
+    // Sort conversations: Pinned chats first! Then by latest message timestamp or fallback to 0
+    return visibleSessions.sort((a, b) => {
+      const isPinnedA = pinnedChats.includes(a.chatId);
+      const isPinnedB = pinnedChats.includes(b.chatId);
+      if (isPinnedA && !isPinnedB) return -1;
+      if (!isPinnedA && isPinnedB) return 1;
+
       const timeA = a.lastMsg?.timestamp || 0;
       const timeB = b.lastMsg?.timestamp || 0;
       return timeB - timeA;
     });
-  }, [allProfiles, messagesList, currentUser, groups, customNamesTick]);
+  }, [allProfiles, messagesList, currentUser, groups, customNamesTick, pinnedChats, archivedChats, lockedChats, deletedChats, unreadMarkedChats]);
 
   // General chat preview details
   const generalPreview = useMemo(() => getChatPreview('general'), [messagesList, customNamesTick]);
@@ -403,10 +560,29 @@ export default function ChatListScreen({
             
             const seed = currentUser.username?.charCodeAt(0) || 0;
 
+            const meSessionItem = {
+              chatId: meChatId,
+              isGroup: false,
+              name: 'Me (Personal Vault)',
+              lastMsg: mePreview,
+              unreadCount: meUnreadCount,
+            };
+
             return (
               <button
                 onClick={() => onSelectChat(meChatId, currentUser)}
-                className="w-full flex items-center gap-3.5 p-3.5 rounded-2xl bg-[#161d28]/60 hover:bg-[#161d28] border border-[#212a38]/40 transition-colors cursor-pointer text-left group"
+                onMouseDown={(e) => handleTouchStart(meSessionItem, e)}
+                onMouseUp={handleTouchEnd}
+                onMouseLeave={handleTouchEnd}
+                onTouchStart={(e) => handleTouchStart(meSessionItem, e)}
+                onTouchEnd={handleTouchEnd}
+                onTouchMove={handleTouchMove}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+                  setActiveLongPressChat(meSessionItem);
+                }}
+                className="w-full flex items-center gap-3.5 p-3.5 rounded-2xl bg-[#161d28]/60 hover:bg-[#161d28] border border-[#212a38]/40 transition-colors cursor-pointer text-left group relative select-none"
               >
                 <div 
                   onClick={(e) => {
@@ -440,13 +616,15 @@ export default function ChatListScreen({
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <span className="font-display font-bold text-[14.5px] text-white group-hover:text-[#20e3a2] transition-colors">
-                      Me <span className="text-[10px] text-[#5a6478] font-mono font-medium ml-1.5 px-1.5 py-0.5 rounded bg-[#1d2531]">Personal Vault</span>
+                    <span className="font-display font-bold text-[14.5px] text-white group-hover:text-[#20e3a2] transition-colors flex items-center gap-1.5">
+                      {pinnedChats.includes(meChatId) && <Pin className="w-3.5 h-3.5 text-[#20e3a2] fill-current shrink-0" />}
+                      <span>Me</span>
+                      <span className="text-[10px] text-[#5a6478] font-mono font-medium ml-1 px-1.5 py-0.5 rounded bg-[#1d2531]">Personal Vault</span>
                     </span>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {meUnreadCount > 0 && (
+                      {(meUnreadCount > 0 || unreadMarkedChats.includes(meChatId)) && (
                         <span className="bg-[#20e3a2] text-black font-mono font-extrabold text-[10px] px-2 py-0.5 rounded-full min-w-[18px] text-center animate-pulse shadow-[0_0_12px_rgba(32,227,162,0.45)]">
-                          {meUnreadCount}
+                          {meUnreadCount || 1}
                         </span>
                       )}
                       {mePreview && (
@@ -470,10 +648,29 @@ export default function ChatListScreen({
 
           {(() => {
             const generalUnreadCount = getUnreadCount('general');
+            const generalSessionItem = {
+              chatId: 'general',
+              isGroup: false,
+              name: 'VyperVic General',
+              lastMsg: generalPreview,
+              unreadCount: generalUnreadCount,
+            };
+
             return (
               <button
                 onClick={() => onSelectChat('general')}
-                className="w-full flex items-center gap-3.5 p-3.5 rounded-2xl bg-[#161d28]/60 hover:bg-[#161d28] border border-[#212a38]/40 transition-colors cursor-pointer text-left group"
+                onMouseDown={(e) => handleTouchStart(generalSessionItem, e)}
+                onMouseUp={handleTouchEnd}
+                onMouseLeave={handleTouchEnd}
+                onTouchStart={(e) => handleTouchStart(generalSessionItem, e)}
+                onTouchEnd={handleTouchEnd}
+                onTouchMove={handleTouchMove}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+                  setActiveLongPressChat(generalSessionItem);
+                }}
+                className="w-full flex items-center gap-3.5 p-3.5 rounded-2xl bg-[#161d28]/60 hover:bg-[#161d28] border border-[#212a38]/40 transition-colors cursor-pointer text-left group relative select-none"
               >
                 <div 
                   onClick={(e) => {
@@ -502,13 +699,14 @@ export default function ChatListScreen({
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <span className="font-display font-bold text-[14.5px] text-white group-hover:text-[#20e3a2] transition-colors">
-                      VyperVic General
+                    <span className="font-display font-bold text-[14.5px] text-white group-hover:text-[#20e3a2] transition-colors flex items-center gap-1.5">
+                      {pinnedChats.includes('general') && <Pin className="w-3.5 h-3.5 text-[#20e3a2] fill-current shrink-0" />}
+                      <span>VyperVic General</span>
                     </span>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {generalUnreadCount > 0 && (
+                      {(generalUnreadCount > 0 || unreadMarkedChats.includes('general')) && (
                         <span className="bg-[#20e3a2] text-black font-mono font-extrabold text-[10px] px-2 py-0.5 rounded-full min-w-[18px] text-center animate-pulse shadow-[0_0_12px_rgba(32,227,162,0.45)]">
-                          {generalUnreadCount}
+                          {generalUnreadCount || 1}
                         </span>
                       )}
                       {generalPreview && (
@@ -553,7 +751,9 @@ export default function ChatListScreen({
           ) : (
             <div className="space-y-2">
               {mixedChats.map((session) => {
-                const unreadCount = session.unreadCount;
+                const isMarkedUnread = unreadMarkedChats.includes(session.chatId);
+                const isPinned = pinnedChats.includes(session.chatId);
+                const unreadCount = isMarkedUnread ? (session.unreadCount || 1) : session.unreadCount;
                 
                 if (session.isGroup) {
                   // Render Group item
@@ -562,7 +762,18 @@ export default function ChatListScreen({
                     <button
                       key={session.chatId}
                       onClick={() => onSelectChat(session.chatId)}
-                      className="w-full flex items-center gap-3.5 p-3.5 rounded-2xl bg-[#161d28]/20 hover:bg-[#161d28]/70 border border-[#212a38]/20 hover:border-[#212a38]/70 transition-all cursor-pointer text-left group"
+                      onMouseDown={(e) => handleTouchStart(session, e)}
+                      onMouseUp={handleTouchEnd}
+                      onMouseLeave={handleTouchEnd}
+                      onTouchStart={(e) => handleTouchStart(session, e)}
+                      onTouchEnd={handleTouchEnd}
+                      onTouchMove={handleTouchMove}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+                        setActiveLongPressChat(session);
+                      }}
+                      className="w-full flex items-center gap-3.5 p-3.5 rounded-2xl bg-[#161d28]/20 hover:bg-[#161d28]/70 border border-[#212a38]/20 hover:border-[#212a38]/70 transition-all cursor-pointer text-left group relative select-none"
                     >
                       <div 
                         onClick={(e) => {
@@ -586,9 +797,10 @@ export default function ChatListScreen({
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <span className="font-display font-bold text-[14.5px] text-white group-hover:text-[#20e3a2] transition-colors truncate">
-                            {session.name}
-                            <span className="text-[9px] text-[#20e3a2] font-mono font-bold ml-2 px-1 rounded bg-[#20e3a2]/10 border border-[#20e3a2]/15 font-sans">GROUP</span>
+                          <span className="font-display font-bold text-[14.5px] text-white group-hover:text-[#20e3a2] transition-colors truncate flex items-center gap-1.5">
+                            {isPinned && <Pin className="w-3.5 h-3.5 text-[#20e3a2] fill-current shrink-0" />}
+                            <span className="truncate">{session.name}</span>
+                            <span className="text-[9px] text-[#20e3a2] font-mono font-bold ml-1 px-1 rounded bg-[#20e3a2]/10 border border-[#20e3a2]/15 font-sans shrink-0">GROUP</span>
                           </span>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             {unreadCount > 0 && (
@@ -633,7 +845,18 @@ export default function ChatListScreen({
                     <button
                       key={session.chatId}
                       onClick={() => onSelectChat(session.chatId, peer)}
-                      className="w-full flex items-center gap-3.5 p-3.5 rounded-2xl bg-[#161d28]/30 hover:bg-[#161d28]/80 border border-[#212a38]/20 hover:border-[#212a38] transition-all cursor-pointer text-left group"
+                      onMouseDown={(e) => handleTouchStart(session, e)}
+                      onMouseUp={handleTouchEnd}
+                      onMouseLeave={handleTouchEnd}
+                      onTouchStart={(e) => handleTouchStart(session, e)}
+                      onTouchEnd={handleTouchEnd}
+                      onTouchMove={handleTouchMove}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+                        setActiveLongPressChat(session);
+                      }}
+                      className="w-full flex items-center gap-3.5 p-3.5 rounded-2xl bg-[#161d28]/30 hover:bg-[#161d28]/80 border border-[#212a38]/20 hover:border-[#212a38] transition-all cursor-pointer text-left group relative select-none"
                     >
                       <div 
                         onClick={(e) => {
@@ -672,8 +895,9 @@ export default function ChatListScreen({
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
-                          <span className="font-display font-bold text-[14.5px] text-white group-hover:text-[#7c5cff] transition-colors truncate">
-                            {getContactDisplayName(peer)}
+                          <span className="font-display font-bold text-[14.5px] text-white group-hover:text-[#7c5cff] transition-colors truncate flex items-center gap-1.5">
+                            {isPinned && <Pin className="w-3.5 h-3.5 text-[#20e3a2] fill-current shrink-0" />}
+                            <span className="truncate">{getContactDisplayName(peer)}</span>
                           </span>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             {unreadCount > 0 && (
@@ -724,19 +948,136 @@ export default function ChatListScreen({
         <Search className="w-5.5 h-5.5 text-white group-hover:rotate-12 transition-transform drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]" />
       </button>
 
+      {/* Long Press Sucked Up Chat Card Context Menu Overlay */}
+      {activeLongPressChat && (
+        <div 
+          className="fixed inset-0 bg-black/75 backdrop-blur-md z-[150] flex flex-col items-center justify-center p-4 animate-fade-in"
+          onClick={() => setActiveLongPressChat(null)}
+        >
+          <div 
+            className="w-full max-w-sm flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Highlighted Sucked Up Chat Card */}
+            <div className="w-full bg-[#1a2332]/95 border-2 border-[#20e3a2]/80 rounded-2xl p-4 mb-4 shadow-[0_20px_50px_rgba(0,0,0,0.9),0_0_20px_rgba(32,227,162,0.3)] transform scale-105 transition-all duration-300 flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-full bg-[#161d28] border border-[#212a38] flex items-center justify-center shadow-lg shrink-0 overflow-hidden relative">
+                {activeLongPressChat.peer ? (
+                  activeLongPressChat.peer.avatar_url ? (
+                    <img src={activeLongPressChat.peer.avatar_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-white font-bold text-lg">{getInitials(activeLongPressChat.peer.display_name || activeLongPressChat.peer.username || 'V')}</span>
+                  )
+                ) : (
+                  <span className="text-lg font-black">{activeLongPressChat.icon || '👥'}</span>
+                )}
+              </div>
+              <div className="flex-1 min-w-0 text-left">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-display font-bold text-base text-white truncate">
+                    {activeLongPressChat.name || (activeLongPressChat.peer ? getContactDisplayName(activeLongPressChat.peer) : 'Chat Portal')}
+                  </h4>
+                  {pinnedChats.includes(activeLongPressChat.chatId) && (
+                    <Pin className="w-4 h-4 text-[#20e3a2] fill-current shrink-0 ml-2" />
+                  )}
+                </div>
+                <p className="text-xs text-[#8d97ab] truncate mt-0.5">
+                  {activeLongPressChat.lastMsg?.text || 'Conversation active'}
+                </p>
+              </div>
+            </div>
+
+            {/* Apple Liquid Glass Context Menu */}
+            <div className="w-full bg-[#161d28]/90 backdrop-blur-2xl border border-white/15 rounded-2xl overflow-hidden shadow-2xl divide-y divide-white/10 animate-scale-up">
+              {/* Pin Chat */}
+              <button
+                type="button"
+                onClick={() => togglePinChat(activeLongPressChat.chatId)}
+                className="w-full px-4 py-3.5 flex items-center justify-between text-left text-sm font-semibold text-white hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <span className="flex items-center gap-3">
+                  <Pin className={`w-4 h-4 ${pinnedChats.includes(activeLongPressChat.chatId) ? 'text-[#20e3a2] fill-current' : 'text-white/70'}`} />
+                  <span>{pinnedChats.includes(activeLongPressChat.chatId) ? 'Unpin Chat' : 'Pin Chat'}</span>
+                </span>
+                <span className="text-xs text-white/40 font-mono">⌘P</span>
+              </button>
+
+              {/* Archive Chat */}
+              <button
+                type="button"
+                onClick={() => toggleArchiveChat(activeLongPressChat.chatId)}
+                className="w-full px-4 py-3.5 flex items-center justify-between text-left text-sm font-semibold text-white hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <span className="flex items-center gap-3">
+                  <Archive className={`w-4 h-4 ${archivedChats.includes(activeLongPressChat.chatId) ? 'text-[#7c5cff]' : 'text-white/70'}`} />
+                  <span>{archivedChats.includes(activeLongPressChat.chatId) ? 'Unarchive Chat' : 'Archive Chat'}</span>
+                </span>
+                <span className="text-xs text-white/40 font-mono">⌘A</span>
+              </button>
+
+              {/* Mark as unread */}
+              <button
+                type="button"
+                onClick={() => toggleUnreadChat(activeLongPressChat.chatId)}
+                className="w-full px-4 py-3.5 flex items-center justify-between text-left text-sm font-semibold text-white hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <span className="flex items-center gap-3">
+                  {unreadMarkedChats.includes(activeLongPressChat.chatId) ? (
+                    <CheckCircle className="w-4 h-4 text-[#20e3a2]" />
+                  ) : (
+                    <Mail className="w-4 h-4 text-white/70" />
+                  )}
+                  <span>{unreadMarkedChats.includes(activeLongPressChat.chatId) ? 'Mark as read' : 'Mark as unread'}</span>
+                </span>
+                <span className="text-xs text-white/40 font-mono">⌘U</span>
+              </button>
+
+              {/* Lock Chat */}
+              <button
+                type="button"
+                onClick={() => toggleLockChat(activeLongPressChat.chatId)}
+                className="w-full px-4 py-3.5 flex items-center justify-between text-left text-sm font-semibold text-white hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <span className="flex items-center gap-3">
+                  {lockedChats.includes(activeLongPressChat.chatId) ? (
+                    <Unlock className="w-4 h-4 text-[#20e3a2]" />
+                  ) : (
+                    <Lock className="w-4 h-4 text-white/70" />
+                  )}
+                  <span>{lockedChats.includes(activeLongPressChat.chatId) ? 'Unlock Chat' : 'Lock Chat'}</span>
+                </span>
+                <span className="text-xs text-white/40 font-mono">⌘L</span>
+              </button>
+
+              {/* Delete Conversation */}
+              <button
+                type="button"
+                onClick={() => handleDeleteConversation(activeLongPressChat.chatId)}
+                className="w-full px-4 py-3.5 flex items-center justify-between text-left text-sm font-bold text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+              >
+                <span className="flex items-center gap-3">
+                  <Trash2 className="w-4 h-4 text-rose-400" />
+                  <span>Delete Conversation</span>
+                </span>
+                <span className="text-xs text-rose-400/50 font-mono">⌘D</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Archived Chats Modal */}
       {showArchivedModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-[#161d28] border border-[#212a38] rounded-3xl w-full max-w-md p-5 relative shadow-2xl">
+          <div className="bg-[#161d28] border border-[#212a38] rounded-3xl w-full max-w-md p-5 relative shadow-2xl max-h-[80vh] flex flex-col">
             <button
               type="button"
               onClick={() => setShowArchivedModal(false)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/80 hover:text-white cursor-pointer"
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/80 hover:text-white cursor-pointer z-10"
             >
               <X className="w-4 h-4" />
             </button>
 
-            <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center gap-3 mb-4 shrink-0">
               <div className="p-2.5 rounded-2xl bg-[#7c5cff]/15 text-[#7c5cff]">
                 <Archive className="w-5 h-5" />
               </div>
@@ -746,10 +1087,92 @@ export default function ChatListScreen({
               </div>
             </div>
 
-            <div className="p-8 bg-[#080b10]/60 border border-dashed border-[#212a38] rounded-2xl text-center space-y-2">
-              <Archive className="w-8 h-8 text-[#5a6478] mx-auto opacity-40" />
-              <p className="text-xs font-semibold text-[#8d97ab]">No archived conversations</p>
-              <p className="text-[11px] text-[#5a6478]">You have no archived chats at this time.</p>
+            <div className="overflow-y-auto flex-1 pr-1 space-y-2">
+              {archivedChats.length === 0 ? (
+                <div className="p-8 bg-[#080b10]/60 border border-dashed border-[#212a38] rounded-2xl text-center space-y-2 my-auto">
+                  <Archive className="w-8 h-8 text-[#5a6478] mx-auto opacity-40" />
+                  <p className="text-xs font-semibold text-[#8d97ab]">No archived conversations</p>
+                  <p className="text-[11px] text-[#5a6478]">Long-press any chat to archive it here.</p>
+                </div>
+              ) : (
+                archivedChats.map((archivedId) => {
+                  const peer = allProfiles.find((p) => `dm:${[currentUser.id, p.id].sort().join(':')}` === archivedId);
+                  const grp = groups.find((g) => g.id === archivedId);
+                  const isGeneral = archivedId === 'general';
+                  const isMe = archivedId === `dm:${currentUser.id}:${currentUser.id}`;
+
+                  const name = isGeneral ? 'VyperVic General' : isMe ? 'Me (Personal Vault)' : grp ? grp.name : peer ? getContactDisplayName(peer) : archivedId;
+
+                  return (
+                    <div 
+                      key={archivedId} 
+                      onClick={() => {
+                        setShowArchivedModal(false);
+                        if (isMe) {
+                          onSelectChat(archivedId, currentUser);
+                        } else {
+                          onSelectChat(archivedId, peer);
+                        }
+                      }}
+                      className="flex items-center justify-between p-3 rounded-2xl bg-[#080b10] border border-[#212a38] hover:border-[#7c5cff]/60 hover:bg-[#161d28] transition-all cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8.5 h-8.5 rounded-full bg-[#161d28] border border-[#212a38] flex items-center justify-center text-xs font-bold text-white shrink-0 overflow-hidden">
+                          {peer ? (
+                            peer.avatar_url ? (
+                              <img src={peer.avatar_url} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              getInitials(peer.display_name || peer.username || 'V')
+                            )
+                          ) : isGeneral ? (
+                            '💬'
+                          ) : isMe ? (
+                            '👤'
+                          ) : (
+                            '👥'
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-sm font-bold text-white group-hover:text-[#20e3a2] transition-colors truncate block max-w-[150px] sm:max-w-[190px]">
+                            {name}
+                          </span>
+                          <span className="text-[10px] text-[#20e3a2] font-semibold block">
+                            Tap to open conversation
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowArchivedModal(false);
+                            if (isMe) {
+                              onSelectChat(archivedId, currentUser);
+                            } else {
+                              onSelectChat(archivedId, peer);
+                            }
+                          }}
+                          className="px-2.5 py-1.5 text-xs font-bold rounded-xl bg-[#20e3a2]/20 text-[#20e3a2] hover:bg-[#20e3a2]/30 border border-[#20e3a2]/30 transition-colors cursor-pointer"
+                        >
+                          Open
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleArchiveChat(archivedId);
+                          }}
+                          className="px-2.5 py-1.5 text-xs font-semibold rounded-xl bg-[#7c5cff]/20 text-[#7c5cff] hover:bg-[#7c5cff]/30 border border-[#7c5cff]/30 transition-colors cursor-pointer"
+                          title="Unarchive and return to chat list"
+                        >
+                          Unarchive
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
@@ -758,29 +1181,55 @@ export default function ChatListScreen({
       {/* Locked Chats Modal */}
       {showLockedModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-[#161d28] border border-[#212a38] rounded-3xl w-full max-w-md p-5 relative shadow-2xl">
+          <div className="bg-[#161d28] border border-[#212a38] rounded-3xl w-full max-w-md p-5 relative shadow-2xl max-h-[80vh] flex flex-col">
             <button
               type="button"
               onClick={() => setShowLockedModal(false)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/80 hover:text-white cursor-pointer"
+              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/80 hover:text-white cursor-pointer z-10"
             >
               <X className="w-4 h-4" />
             </button>
 
-            <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center gap-3 mb-4 shrink-0">
               <div className="p-2.5 rounded-2xl bg-[#20e3a2]/15 text-[#20e3a2]">
                 <Lock className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="font-display font-bold text-base text-white leading-tight">Locked Chats</h3>
-                <p className="text-[11px] text-[#8d97ab] mt-0.5">PIN & biometric protected chats</p>
+                <p className="text-[11px] text-[#8d97ab] mt-0.5">Protected private conversations</p>
               </div>
             </div>
 
-            <div className="p-8 bg-[#080b10]/60 border border-dashed border-[#212a38] rounded-2xl text-center space-y-2">
-              <Lock className="w-8 h-8 text-[#20e3a2] mx-auto opacity-40" />
-              <p className="text-xs font-semibold text-[#8d97ab]">No locked chats configured</p>
-              <p className="text-[11px] text-[#5a6478]">Long-press any chat in your list to secure or lock it.</p>
+            <div className="overflow-y-auto flex-1 pr-1 space-y-2">
+              {lockedChats.length === 0 ? (
+                <div className="p-8 bg-[#080b10]/60 border border-dashed border-[#212a38] rounded-2xl text-center space-y-2 my-auto">
+                  <Lock className="w-8 h-8 text-[#20e3a2] mx-auto opacity-40" />
+                  <p className="text-xs font-semibold text-[#8d97ab]">No locked chats configured</p>
+                  <p className="text-[11px] text-[#5a6478]">Long-press any chat in your list to lock or secure it.</p>
+                </div>
+              ) : (
+                lockedChats.map((lockedId) => {
+                  const peer = allProfiles.find((p) => `dm:${[currentUser.id, p.id].sort().join(':')}` === lockedId);
+                  const grp = groups.find((g) => g.id === lockedId);
+                  const isGeneral = lockedId === 'general';
+                  const isMe = lockedId === `dm:${currentUser.id}:${currentUser.id}`;
+
+                  const name = isGeneral ? 'VyperVic General' : isMe ? 'Me (Personal Vault)' : grp ? grp.name : peer ? getContactDisplayName(peer) : lockedId;
+
+                  return (
+                    <div key={lockedId} className="flex items-center justify-between p-3 rounded-2xl bg-[#080b10] border border-[#212a38]">
+                      <span className="text-sm font-bold text-white truncate max-w-[200px]">{name}</span>
+                      <button
+                        type="button"
+                        onClick={() => toggleLockChat(lockedId)}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-[#20e3a2]/20 text-[#20e3a2] hover:bg-[#20e3a2]/30 border border-[#20e3a2]/30 transition-colors cursor-pointer"
+                      >
+                        Unlock
+                      </button>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
@@ -858,173 +1307,277 @@ export default function ChatListScreen({
         </div>
       )}
 
-      {/* Global Message Search Modal */}
+      {/* Global Message Search Full Screen Overlay */}
       {showSearchMessagesModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-[#161d28] border border-[#212a38] rounded-3xl w-full max-w-lg p-5 relative shadow-2xl flex flex-col max-h-[85vh]">
+        <div className="fixed inset-0 bg-[#080b10]/85 backdrop-blur-3xl z-[100] flex flex-col p-4 md:p-6 animate-fade-in overflow-hidden shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]">
+          {/* Header Bar */}
+          <div className="flex items-center gap-3 border-b border-white/10 pb-4 mb-4 shrink-0">
             <button
-              type="button"
               onClick={() => {
                 setShowSearchMessagesModal(false);
                 setSearchMessageQuery('');
+                setSearchSenderId('all');
               }}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/80 hover:text-white cursor-pointer z-10"
+              className="w-10 h-10 rounded-full bg-white/5 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:text-[#20e3a2] cursor-pointer hover:bg-white/15 transition-all shrink-0"
+              title="Close search"
             >
-              <X className="w-4 h-4" />
+              <ArrowLeft className="w-5 h-5" />
             </button>
-
-            <div className="flex items-center gap-3 mb-3 shrink-0">
-              <div className="p-2.5 rounded-2xl bg-[#20e3a2]/15 text-[#20e3a2]">
-                <Search className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-display font-bold text-base text-white leading-tight">Search Messages</h3>
-                <p className="text-[11px] text-[#8d97ab] mt-0.5">Search keywords across all chat sessions (latest to oldest)</p>
-              </div>
-            </div>
-
-            {/* Keyword Search Input */}
-            <div className="mb-4 shrink-0">
-              <div className="flex items-center gap-2 bg-[#080b10] border border-[#212a38] focus-within:border-[#20e3a2] rounded-2xl px-3.5 py-2.5 transition-colors">
-                <Search className="w-4 h-4 text-[#8d97ab] shrink-0" />
-                <input
-                  type="text"
-                  autoFocus
-                  placeholder="Type a keyword to search messages..."
-                  value={searchMessageQuery}
-                  onChange={(e) => setSearchMessageQuery(e.target.value)}
-                  className="w-full bg-transparent border-none outline-none text-xs text-[#eef1f6] font-semibold placeholder-[#5a6478]"
-                />
-                {searchMessageQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchMessageQuery('')}
-                    className="p-1 rounded-full text-[#8d97ab] hover:text-white"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Results list sorted from latest to oldest */}
-            <div className="overflow-y-auto flex-1 pr-1 space-y-2.5">
-              {(() => {
-                const query = searchMessageQuery.trim().toLowerCase();
-                if (!query) {
-                  return (
-                    <div className="p-8 bg-[#080b10]/60 border border-dashed border-[#212a38] rounded-2xl text-center space-y-2 my-auto">
-                      <Search className="w-8 h-8 text-[#20e3a2] mx-auto opacity-40" />
-                      <p className="text-xs font-semibold text-[#8d97ab]">Message Search Ready</p>
-                      <p className="text-[11px] text-[#5a6478]">Type any keyword above to search through all message histories.</p>
-                    </div>
-                  );
-                }
-
-                // Filter matching messages across all chats
-                const matchingMsgs = messagesList
-                  .filter((m) => {
-                    if (m.text?.startsWith('_vyper_deleted_::')) return false;
-                    let content = m.text || m.file_name || '';
-                    if (content.startsWith('_vyper_reply_::')) {
-                      try {
-                        const meta = JSON.parse(content.substring('_vyper_reply_::'.length));
-                        content = meta.text || '';
-                      } catch (e) {}
-                    }
-                    return content.toLowerCase().includes(query);
-                  })
-                  .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-                if (matchingMsgs.length === 0) {
-                  return (
-                    <div className="p-8 bg-[#080b10]/60 border border-dashed border-[#212a38] rounded-2xl text-center space-y-2 my-auto">
-                      <Search className="w-8 h-8 text-[#ff5470] mx-auto opacity-40" />
-                      <p className="text-xs font-semibold text-[#8d97ab]">No messages found</p>
-                      <p className="text-[11px] text-[#5a6478]">No matching messages for "{searchMessageQuery}". Try another keyword.</p>
-                    </div>
-                  );
-                }
-
-                const renderHighlighted = (text: string, keyword: string) => {
-                  if (!keyword) return text;
-                  const parts = text.split(new RegExp(`(${keyword.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')})`, 'gi'));
-                  return parts.map((part, i) =>
-                    part.toLowerCase() === keyword.toLowerCase() ? (
-                      <mark key={i} className="bg-[#20e3a2]/30 text-[#20e3a2] font-bold rounded px-1 py-0.5">
-                        {part}
-                      </mark>
-                    ) : (
-                      part
-                    )
-                  );
-                };
-
-                return matchingMsgs.map((msg) => {
-                  const sender = allProfiles.find((p) => p.id === msg.sender_id);
-                  const senderName = sender?.display_name || sender?.username || 'Operator';
-                  
-                  // Find chat room title
-                  let roomTitle = 'Direct Message';
-                  if (msg.chat_id === 'general') {
-                    roomTitle = 'General Channel';
-                  } else if (msg.chat_id.startsWith('dm:')) {
-                    const peerId = msg.chat_id.split(':').find((id) => id !== currentUser.id && id !== 'dm');
-                    const peer = allProfiles.find((p) => p.id === peerId);
-                    if (peer) roomTitle = peer.display_name || peer.username;
-                  } else if (groups) {
-                    const grp = groups.find((g) => g.id === msg.chat_id);
-                    if (grp) roomTitle = grp.name;
-                  }
-
-                  let displayContent = msg.text || (msg.is_voice ? 'Voice Note' : msg.file_name || 'Attachment');
-                  if (displayContent.startsWith('_vyper_reply_::')) {
-                    try {
-                      const meta = JSON.parse(displayContent.substring('_vyper_reply_::'.length));
-                      displayContent = meta.text;
-                    } catch (e) {}
-                  }
-
-                  const dateStr = new Date(msg.created_at).toLocaleDateString([], {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  });
-
-                  return (
-                    <div
-                      key={msg.id}
-                      onClick={() => {
-                        setShowSearchMessagesModal(false);
-                        setSearchMessageQuery('');
-                        let targetPeer: Profile | undefined;
-                        if (msg.chat_id.startsWith('dm:')) {
-                          const peerId = msg.chat_id.split(':').find((id) => id !== currentUser.id && id !== 'dm');
-                          targetPeer = allProfiles.find((p) => p.id === peerId);
-                        }
-                        onSelectChat(msg.chat_id, targetPeer, msg.id);
-                      }}
-                      className="p-3.5 rounded-2xl bg-[#080b10]/80 hover:bg-[#080b10] border border-[#212a38] hover:border-[#20e3a2]/40 transition-all cursor-pointer text-left group"
-                    >
-                      <div className="flex items-center justify-between gap-2 mb-1.5">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-xs font-bold text-white truncate">{roomTitle}</span>
-                          <span className="text-[10px] text-[#20e3a2] font-semibold shrink-0">• {senderName}</span>
-                        </div>
-                        <span className="text-[10px] text-[#5a6478] font-mono shrink-0">{dateStr}</span>
-                      </div>
-                      <p className="text-xs text-[#eef1f6] leading-relaxed line-clamp-2">
-                        {renderHighlighted(displayContent, query)}
-                      </p>
-                    </div>
-                  );
-                });
-              })()}
+            <div className="flex-1 min-w-0">
+              <h3 className="font-display font-bold text-sm text-white flex items-center gap-2">
+                <Search className="w-4 h-4 text-[#20e3a2]" />
+                <span>Message Search</span>
+              </h3>
+              <p className="text-[10px] text-[#8d97ab] truncate mt-0.5">
+                Search keywords and filter senders across all chat sessions
+              </p>
             </div>
           </div>
+
+          {/* Search Inputs (Keyword & Sender Filter) */}
+          <div className="space-y-3 shrink-0 mb-4">
+            {/* Keyword Input */}
+            <div className="relative flex items-center">
+              <Search className="w-4 h-4 text-[#8d97ab] absolute left-3.5 pointer-events-none" />
+              <input
+                type="text"
+                value={searchMessageQuery}
+                onChange={(e) => setSearchMessageQuery(e.target.value)}
+                placeholder="Search keywords across all chats..."
+                className="w-full bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl pl-10 pr-10 py-2.5 text-xs font-semibold text-white placeholder-[#5a6478] outline-none focus:border-[#20e3a2]/70 focus:bg-white/10 transition-all shadow-inner"
+                autoFocus
+              />
+              {searchMessageQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchMessageQuery('')}
+                  className="absolute right-3 p-1 rounded-full text-[#8d97ab] hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Sender Filter Chips */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+              <span className="text-[10px] font-bold text-[#8d97ab] uppercase font-mono shrink-0 mr-1">
+                Sender:
+              </span>
+              <button
+                type="button"
+                onClick={() => setSearchSenderId('all')}
+                className={`px-3 py-1.5 rounded-xl text-[10.5px] font-bold transition-all shrink-0 cursor-pointer backdrop-blur-lg ${
+                  searchSenderId === 'all'
+                    ? 'bg-[#20e3a2] text-black shadow-md shadow-[#20e3a2]/20'
+                    : 'bg-white/5 border border-white/10 text-[#8d97ab] hover:text-white hover:bg-white/10'
+                }`}
+              >
+                All Senders
+              </button>
+
+              {chatParticipants.map((sender) => {
+                const isSelected = searchSenderId === sender.id;
+                return (
+                  <button
+                    key={sender.id}
+                    type="button"
+                    onClick={() => setSearchSenderId(sender.id)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10.5px] font-bold transition-all shrink-0 cursor-pointer backdrop-blur-lg ${
+                      isSelected
+                        ? 'bg-[#7c5cff] text-white shadow-md shadow-[#7c5cff]/20'
+                        : 'bg-white/5 border border-white/10 text-[#8d97ab] hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    <span className="w-4 h-4 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-[8px] bg-black/30 font-bold">
+                      {sender.avatar ? (
+                        <img src={sender.avatar} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        sender.name.substring(0, 1).toUpperCase()
+                      )}
+                    </span>
+                    <span className="truncate max-w-[110px]">{sender.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Results Summary Count */}
+          {(() => {
+            const query = searchMessageQuery.trim().toLowerCase();
+            const matchingMsgs = messagesList
+              .filter((m) => {
+                if (m.text?.startsWith('_vyper_deleted_::')) return false;
+
+                if (searchSenderId !== 'all' && m.sender_id !== searchSenderId) {
+                  return false;
+                }
+
+                if (!query) return true;
+
+                let content = m.text || m.file_name || '';
+                if (content.startsWith('_vyper_reply_::')) {
+                  try {
+                    const meta = JSON.parse(content.substring('_vyper_reply_::'.length));
+                    content = meta.text || '';
+                  } catch (e) {}
+                } else if (content.startsWith('_vyper_call_::')) {
+                  content = 'Call';
+                } else if (content.startsWith('[Forwarded]: ')) {
+                  content = content.substring('[Forwarded]: '.length);
+                }
+
+                const matchesText = content.toLowerCase().includes(query);
+                const matchesFile = m.file_name ? m.file_name.toLowerCase().includes(query) : false;
+                const sender = allProfiles.find((p) => p.id === m.sender_id);
+                const senderName = m.sender_id === currentUser.id ? 'you' : (sender?.display_name || sender?.username || '').toLowerCase();
+                const matchesSender = senderName.includes(query);
+
+                return matchesText || matchesFile || matchesSender;
+              })
+              .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+            return (
+              <>
+                <div className="flex items-center justify-between text-[11px] font-mono text-[#8d97ab] border-b border-white/10 pb-2.5 mb-3 shrink-0">
+                  <span>
+                    {matchingMsgs.length} message{matchingMsgs.length === 1 ? '' : 's'} found
+                  </span>
+                  {(searchMessageQuery || searchSenderId !== 'all') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchMessageQuery('');
+                        setSearchSenderId('all');
+                      }}
+                      className="text-[10px] text-[#20e3a2] hover:underline cursor-pointer font-bold"
+                    >
+                      Reset filters
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
+                  {matchingMsgs.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 text-center animate-fade-in">
+                      <Search className="w-10 h-10 text-[#5a6478] mb-3 opacity-40" />
+                      <p className="text-xs font-bold text-white mb-1">No matching messages</p>
+                      <p className="text-[10px] text-[#8d97ab] max-w-xs">
+                        Try adjusting your search keyword or selecting a different sender filter.
+                      </p>
+                    </div>
+                  ) : (
+                    matchingMsgs.map((msg) => {
+                      const sender = allProfiles.find((p) => p.id === msg.sender_id);
+                      const senderName = msg.sender_id === currentUser.id ? 'You' : (sender?.display_name || sender?.username || 'Operator');
+                      const senderSeed = sender?.username?.charCodeAt(0) || 0;
+
+                      // Find chat room title
+                      let roomTitle = 'Direct Message';
+                      if (msg.chat_id === 'general') {
+                        roomTitle = 'General Channel';
+                      } else if (msg.chat_id.startsWith('dm:')) {
+                        const peerId = msg.chat_id.split(':').find((id) => id !== currentUser.id && id !== 'dm');
+                        const peer = allProfiles.find((p) => p.id === peerId);
+                        if (peer) roomTitle = peer.display_name || peer.username;
+                        else if (msg.chat_id === `me:${currentUser.id}`) roomTitle = 'Me (Personal Vault)';
+                      } else if (groups) {
+                        const grp = groups.find((g) => g.id === msg.chat_id);
+                        if (grp) roomTitle = grp.name;
+                      }
+
+                      let displayContent = msg.text || '';
+                      if (displayContent.startsWith('_vyper_reply_::')) {
+                        try {
+                          const meta = JSON.parse(displayContent.substring('_vyper_reply_::'.length));
+                          displayContent = meta.text || '';
+                        } catch (e) {}
+                      } else if (displayContent.startsWith('_vyper_call_::')) {
+                        displayContent = '📞 Call Message';
+                      } else if (displayContent.startsWith('[Forwarded]: ')) {
+                        displayContent = displayContent.substring('[Forwarded]: '.length);
+                      }
+
+                      const dateStr = new Date(msg.created_at).toLocaleDateString([], {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      });
+
+                      return (
+                        <div
+                          key={msg.id}
+                          onClick={() => {
+                            setShowSearchMessagesModal(false);
+                            setSearchMessageQuery('');
+                            setSearchSenderId('all');
+                            let targetPeer: Profile | undefined;
+                            if (msg.chat_id.startsWith('dm:')) {
+                              const peerId = msg.chat_id.split(':').find((id) => id !== currentUser.id && id !== 'dm');
+                              targetPeer = allProfiles.find((p) => p.id === peerId);
+                            }
+                            onSelectChat(msg.chat_id, targetPeer, msg.id);
+                          }}
+                          className="p-3.5 rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 hover:border-[#20e3a2]/50 hover:bg-white/10 transition-all cursor-pointer flex items-start gap-3 group animate-fade-in shadow-sm"
+                        >
+                          <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-sm shrink-0 mt-0.5"
+                            style={{
+                              background: sender?.avatar_url ? 'none' : getAvatarStyle(senderSeed),
+                            }}
+                          >
+                            {sender?.avatar_url ? (
+                              <img
+                                src={sender.avatar_url}
+                                alt="Sender"
+                                className="w-full h-full rounded-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              getInitials(senderName)
+                            )}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="text-xs font-bold text-white group-hover:text-[#20e3a2] transition-colors truncate">
+                                  {roomTitle}
+                                </span>
+                                <span className="text-[10px] text-[#20e3a2] font-semibold shrink-0">
+                                  • {senderName}
+                                </span>
+                              </div>
+                              <span className="text-[9.5px] font-mono text-[#8d97ab] shrink-0">
+                                {dateStr}
+                              </span>
+                            </div>
+
+                            <p className="text-xs text-[#eef1f6] leading-relaxed break-words font-medium line-clamp-3">
+                              {displayContent || (msg.is_voice ? '🎤 Voice Note' : msg.file_name ? `📎 ${msg.file_name}` : '')}
+                            </p>
+
+                            {msg.file_name && (
+                              <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-[#20e3a2] font-mono">
+                                <Paperclip className="w-3 h-3" />
+                                <span className="truncate">{msg.file_name}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </div>
       )}
     </div>
   );
 }
+
+export default memo(ChatListScreen);
+

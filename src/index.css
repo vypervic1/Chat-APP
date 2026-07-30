@@ -52,6 +52,27 @@ html, body {
   touch-action: pan-y;
   position: fixed;
   inset: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* High-performance hardware-accelerated scrollables */
+.overflow-y-auto,
+.overflow-y-scroll,
+.overflow-x-auto,
+.overflow-x-scroll {
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain !important;
+  transform: translateZ(0);
+  will-change: scroll-position;
+  backface-visibility: hidden;
+}
+
+/* Universal GPU Acceleration for Screen Containers */
+.transform-gpu {
+  transform: translateZ(0);
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 #root {
