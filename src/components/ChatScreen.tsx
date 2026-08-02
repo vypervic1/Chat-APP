@@ -3648,8 +3648,8 @@ function ChatScreen({
               onClick={() => { setShowDropdown(false); setShowMediaLinksDocs(true); }}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 text-left text-xs font-semibold text-white transition-colors cursor-pointer"
             >
-              <FileText className="w-4 h-4 text-[#7c5cff]" />
-              Media, links & docs
+              <Image className="w-4 h-4 text-[#7c5cff]" />
+              Chat Media
             </button>
             {currentGroup && (
               <button
@@ -4126,8 +4126,8 @@ function ChatScreen({
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div>
-              <h3 className="font-display font-bold text-sm text-white">📁 Storage Drawer</h3>
-              <p className="text-[10px] text-[#8d97ab] mt-0.5">Media index for this cryptographically paired link</p>
+              <h3 className="font-display font-bold text-sm text-white">🖼️ Chat Media</h3>
+              <p className="text-[10px] text-[#8d97ab] mt-0.5">Media, links & docs for this conversation</p>
             </div>
           </div>
 

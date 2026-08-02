@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, memo, useRef } from 'react';
 import { Profile, Message, Group } from '../types';
-import { Search, Settings, MessageSquare, Shield, Circle, User, Bell, Users, WifiOff, MoreHorizontal, Archive, Lock, X, Star, ArrowLeft, Paperclip, Pin, Trash2, Mail, CheckCircle, Unlock } from 'lucide-react';
+import { Search, Settings, MessageSquare, Shield, Circle, User, Bell, Users, WifiOff, MoreHorizontal, Archive, Lock, X, Star, ArrowLeft, Paperclip, Pin, Trash2, Mail, CheckCircle, Unlock, Image } from 'lucide-react';
 import { getContactDisplayName, isUserOnline } from '../utils/customNames';
 
 interface ChatListScreenProps {
@@ -988,6 +988,25 @@ function ChatListScreen({
 
             {/* Apple Liquid Glass Context Menu */}
             <div className="w-full bg-[#161d28]/90 backdrop-blur-2xl border border-white/15 rounded-2xl overflow-hidden shadow-2xl divide-y divide-white/10 animate-scale-up">
+              {/* View Chat Media */}
+              <button
+                type="button"
+                onClick={() => {
+                  const item = activeLongPressChat;
+                  setActiveLongPressChat(null);
+                  if (item) {
+                    onSelectChat(item.chatId, item.peer);
+                  }
+                }}
+                className="w-full px-4 py-3.5 flex items-center justify-between text-left text-sm font-semibold text-white hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <span className="flex items-center gap-3">
+                  <Image className="w-4 h-4 text-[#7c5cff]" />
+                  <span>Chat Media</span>
+                </span>
+                <span className="text-xs text-white/40 font-mono">⌘M</span>
+              </button>
+
               {/* Pin Chat */}
               <button
                 type="button"
