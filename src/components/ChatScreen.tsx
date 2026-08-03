@@ -324,11 +324,48 @@ function ChatScreen({
   const [unifiedEmojis, setUnifiedEmojis] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('vyper_unified_reaction_emojis_v2');
-      return saved ? JSON.parse(saved) : ['❤️', '👍', '🔥', '🎉', '😮', '😂', '👏', '🙏', '😢', '💯'];
+      return saved ? JSON.parse(saved) : ['❤️', '👍', '🔥', '🎉', '😮', '😂'];
     } catch {
-      return ['❤️', '👍', '🔥', '🎉', '😮', '😂', '👏', '🙏', '😢', '💯'];
+      return ['❤️', '👍', '🔥', '🎉', '😮', '😂'];
     }
   });
+
+  useEffect(() => {
+    const handleEmojisUpdate = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setUnifiedEmojis(e.detail);
+      }
+    };
+    window.addEventListener('vyper_unified_emojis_updated', handleEmojisUpdate);
+    return () => window.removeEventListener('vyper_unified_emojis_updated', handleEmojisUpdate);
+  }, []);
+
+  const handleAddNewReactionEmoji = (newEmojiStr: string, messageId?: string) => {
+    const cleanEmoji = newEmojiStr.trim();
+    if (!cleanEmoji) return;
+
+    setUnifiedEmojis((prev) => {
+      const filtered = prev.filter((e) => e !== cleanEmoji);
+      // Remove the last in the list, and append the new one
+      const updated = [...filtered.slice(0, Math.max(0, prev.length - 1)), cleanEmoji];
+      try {
+        localStorage.setItem('vyper_unified_reaction_emojis_v2', JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent('vyper_unified_emojis_updated', { detail: updated }));
+      } catch (e) {}
+      return updated;
+    });
+
+    if (messageId) {
+      onToggleReaction(messageId, cleanEmoji);
+    }
+  };
+
+  const promptForNewEmoji = (messageId?: string) => {
+    const newEmoji = prompt("Enter an emoji to add:");
+    if (newEmoji && newEmoji.trim()) {
+      handleAddNewReactionEmoji(newEmoji.trim(), messageId);
+    }
+  };
   
   // Starred messages state
   const [starredMsgIds, setStarredMsgIds] = useState<string[]>(() => {
@@ -1812,18 +1849,39 @@ function ChatScreen({
 
                 {activeReactionMenuMsgId === msg.id && (
                   <div className={`absolute z-35 bottom-full mb-1 flex items-center gap-1 p-1 rounded-xl bg-[#161d28] border border-[#212a38] shadow-2xl ${isMe ? 'right-0' : 'left-0'}`}>
-                    {['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emoji) => (
-                      <button
+                    {unifiedEmojis.map((emoji) => (
+                      <motion.button
                         key={emoji}
+                        whileHover={{ scale: 1.25, rotate: 6 }}
+                        whileTap={{ scale: 1.45, rotate: -12 }}
+                        transition={{ type: 'spring', stiffness: 500, damping: 15 }}
                         onClick={() => {
                           onToggleReaction(msg.id, emoji);
                           setActiveReactionMenuMsgId(null);
                         }}
-                        className="w-7.5 h-7.5 flex items-center justify-center text-sm hover:bg-white/10 rounded-lg cursor-pointer transition-all duration-100 hover:scale-125"
+                        className="w-7.5 h-7.5 flex items-center justify-center text-sm rounded-lg cursor-pointer transition-colors"
                       >
-                        {emoji}
-                      </button>
+                        <motion.span
+                          whileTap={{ scale: 1.6, rotate: [0, -12, 12, 0] }}
+                          transition={{ duration: 0.2 }}
+                          className="inline-block"
+                        >
+                          {emoji}
+                        </motion.span>
+                      </motion.button>
                     ))}
+                    <motion.button
+                      whileHover={{ scale: 1.2 }}
+                      whileTap={{ scale: 0.85 }}
+                      onClick={() => {
+                        promptForNewEmoji(msg.id);
+                        setActiveReactionMenuMsgId(null);
+                      }}
+                      className="w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-[#20e3a2] text-xs font-bold cursor-pointer transition-colors"
+                      title="Add custom reaction"
+                    >
+                      ＋
+                    </motion.button>
                   </div>
                 )}
 
@@ -2308,18 +2366,29 @@ function ChatScreen({
                         {reactionEntries.map(([emoji, userIds]) => {
                           const hasIReacted = userIds.includes(currentUser.id);
                           return (
-                            <button
+                            <motion.button
                               key={emoji}
                               onClick={() => onToggleReaction(msg.id, emoji)}
-                              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border font-bold transition-all hover:scale-105 active:scale-95 cursor-pointer ${
+                              initial={{ scale: 0.85, opacity: 0 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              whileHover={{ scale: 1.12 }}
+                              whileTap={{ scale: 1.35 }}
+                              transition={{ type: 'spring', stiffness: 500, damping: 15 }}
+                              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border font-bold transition-colors cursor-pointer ${
                                 hasIReacted
                                   ? 'bg-[#7c5cff]/15 border-[#7c5cff]/40 text-[#a78bfa]'
                                   : 'bg-[#161d28]/80 border-[#212a38]/65 text-[#8d97ab]'
                               }`}
                             >
-                              <span>{emoji}</span>
+                              <motion.span
+                                whileTap={{ scale: 1.5, rotate: [0, -12, 12, 0] }}
+                                transition={{ duration: 0.2 }}
+                                className="inline-block"
+                              >
+                                {emoji}
+                              </motion.span>
                               <span className="text-[9px]">{userIds.length}</span>
-                            </button>
+                            </motion.button>
                           );
                         })}
                       </div>
@@ -5051,31 +5120,39 @@ function ChatScreen({
             >
               {/* Quick Reactions Pill (Floating at top) */}
               <div className="bg-white/95 dark:bg-[#1f2633]/95 border border-white/20 shadow-[0_10px_35px_rgba(0,0,0,0.6)] rounded-full px-3 py-1.5 flex items-center justify-between w-full backdrop-blur-xl">
-                {['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emoji) => (
-                  <button
+                {unifiedEmojis.map((emoji) => (
+                  <motion.button
                     key={emoji}
+                    whileHover={{ scale: 1.3, rotate: 6 }}
+                    whileTap={{ scale: 1.45, rotate: -12 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 15 }}
                     onClick={() => {
                       onToggleReaction(longPressedMsg.id, emoji);
                       setLongPressedMsg(null);
                     }}
-                    className="text-xl hover:scale-125 active:scale-110 transition-transform duration-150 p-1 cursor-pointer"
+                    className="text-xl p-1 cursor-pointer transition-transform duration-150 flex items-center justify-center"
                   >
-                    {emoji}
-                  </button>
+                    <motion.span
+                      whileTap={{ scale: 1.6, rotate: [0, -12, 12, 0] }}
+                      transition={{ duration: 0.2 }}
+                      className="inline-block"
+                    >
+                      {emoji}
+                    </motion.span>
+                  </motion.button>
                 ))}
-                <button
+                <motion.button
+                  whileHover={{ scale: 1.2 }}
+                  whileTap={{ scale: 0.85 }}
                   onClick={() => {
-                    const newEmoji = prompt("Enter an emoji to add:");
-                    if (newEmoji && newEmoji.trim()) {
-                      onToggleReaction(longPressedMsg.id, newEmoji.trim());
-                      setLongPressedMsg(null);
-                    }
+                    promptForNewEmoji(longPressedMsg.id);
+                    setLongPressedMsg(null);
                   }}
-                  className="w-6 h-6 rounded-full bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 flex items-center justify-center text-gray-700 dark:text-white text-xs font-bold cursor-pointer transition-colors"
-                  title="More Emojis"
+                  className="w-6 h-6 rounded-full bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 flex items-center justify-center text-gray-700 dark:text-white text-xs font-bold cursor-pointer transition-colors shrink-0"
+                  title="Add custom reaction"
                 >
                   ＋
-                </button>
+                </motion.button>
               </div>
 
               {/* Highlighted Message Bubble Preview Card - Matching Active Theme */}

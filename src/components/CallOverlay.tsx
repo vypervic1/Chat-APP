@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../supabase';
 import { Profile, Call } from '../types';
 import { PhoneOff, Phone, Mic, MicOff, Video, VideoOff, ShieldAlert, Minimize2, Maximize2, RefreshCw, UserPlus, Smile, Circle, Square } from 'lucide-react';
@@ -137,11 +138,38 @@ export default function CallOverlay({
   const [listedReactions, setListedReactions] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('vyper_unified_reaction_emojis_v2');
-      return saved ? JSON.parse(saved) : ['❤️', '👍', '🔥', '🎉', '😮', '😂', '👏', '🙏', '😢', '💯'];
+      return saved ? JSON.parse(saved) : ['❤️', '👍', '🔥', '🎉', '😮', '😂'];
     } catch (e) {
-      return ['❤️', '👍', '🔥', '🎉', '😮', '😂', '👏', '🙏', '😢', '💯'];
+      return ['❤️', '👍', '🔥', '🎉', '😮', '😂'];
     }
   });
+
+  useEffect(() => {
+    const handleEmojisUpdate = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setListedReactions(e.detail);
+      }
+    };
+    window.addEventListener('vyper_unified_emojis_updated', handleEmojisUpdate);
+    return () => window.removeEventListener('vyper_unified_emojis_updated', handleEmojisUpdate);
+  }, []);
+
+  const handleAddNewCallReaction = (newEmojiStr: string) => {
+    const cleanEmoji = newEmojiStr.trim();
+    if (!cleanEmoji) return;
+
+    setListedReactions((prev) => {
+      const filtered = prev.filter((e) => e !== cleanEmoji);
+      const updated = [...filtered.slice(0, Math.max(0, prev.length - 1)), cleanEmoji];
+      try {
+        localStorage.setItem('vyper_unified_reaction_emojis_v2', JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent('vyper_unified_emojis_updated', { detail: updated }));
+      } catch (e) {}
+      return updated;
+    });
+
+    triggerReaction(cleanEmoji);
+  };
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -1519,14 +1547,19 @@ export default function CallOverlay({
                     <div className="absolute bottom-14 left-1/2 -translate-x-1/2 bg-[#161d28]/95 border border-[#212a38] p-2 rounded-2xl flex items-center gap-2 shadow-2xl transition-all duration-200 z-50 animate-fade-in whitespace-nowrap min-w-[200px] backdrop-blur-md">
                       <div className="flex items-center gap-1.5 overflow-x-auto max-w-[240px] scrollbar-none">
                         {listedReactions.map((emoji) => (
-                          <button
+                          <motion.button
                             key={emoji}
+                            whileHover={{ scale: 1.25, rotate: 6 }}
+                            whileTap={{ scale: 1.45, rotate: -12 }}
+                            transition={{ type: 'spring', stiffness: 500, damping: 15 }}
                             onClick={() => {
                               if (isEditingReactions) {
-                                // Remove this reaction
                                 setListedReactions((prev) => {
                                   const next = prev.filter((e) => e !== emoji);
-                                  localStorage.setItem('vyper_call_custom_reactions_v1', JSON.stringify(next));
+                                  try {
+                                    localStorage.setItem('vyper_unified_reaction_emojis_v2', JSON.stringify(next));
+                                    window.dispatchEvent(new CustomEvent('vyper_unified_emojis_updated', { detail: next }));
+                                  } catch (e) {}
                                   return next;
                                 });
                               } else {
@@ -1536,38 +1569,38 @@ export default function CallOverlay({
                             className={`text-xl transition-transform cursor-pointer shrink-0 ${
                               isEditingReactions 
                                 ? 'hover:scale-95 border border-red-500/40 p-0.5 rounded-lg bg-red-500/10' 
-                                : 'hover:scale-125 active:scale-110'
+                                : ''
                             }`}
                             title={isEditingReactions ? "Click to remove" : "Send Reaction"}
                           >
-                            {emoji}
-                          </button>
+                            <motion.span
+                              whileTap={{ scale: 1.6, rotate: [0, -15, 15, 0] }}
+                              transition={{ duration: 0.2 }}
+                              className="inline-block"
+                            >
+                              {emoji}
+                            </motion.span>
+                          </motion.button>
                         ))}
                       </div>
 
                       <div className="w-[1px] h-4 bg-[#212a38] shrink-0" />
 
                       {/* Add Button */}
-                      <button
+                      <motion.button
+                        whileHover={{ scale: 1.2 }}
+                        whileTap={{ scale: 0.85 }}
                         onClick={() => {
                           const newEmoji = prompt("Enter an emoji to add:");
-                          if (newEmoji) {
-                            const emojiClean = newEmoji.trim();
-                            if (emojiClean) {
-                              setListedReactions((prev) => {
-                                // Slice the first 9, append the new one
-                                const next = [...prev.slice(0, 9), emojiClean];
-                                localStorage.setItem('vyper_unified_reaction_emojis_v2', JSON.stringify(next));
-                                return next;
-                              });
-                            }
+                          if (newEmoji && newEmoji.trim()) {
+                            handleAddNewCallReaction(newEmoji.trim());
                           }
                         }}
-                        className="text-xs text-[#20e3a2] hover:scale-110 font-black cursor-pointer shrink-0"
+                        className="text-xs text-[#20e3a2] font-black cursor-pointer shrink-0 p-1"
                         title="Add custom reaction"
                       >
                         ＋
-                      </button>
+                      </motion.button>
 
                       {/* Edit Toggle Button */}
                       <button
