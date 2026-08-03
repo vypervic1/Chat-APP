@@ -179,32 +179,44 @@ export default function AuthScreen({ onAuthComplete }: AuthScreenProps) {
         if (profileError) throw profileError;
 
         if (profile) {
-          // Update online status
-          await supabase
+          const activeProf = { ...profile, is_online: true };
+          try {
+            localStorage.setItem('vypervic_current_user_cache', JSON.stringify(activeProf));
+          } catch (e) {}
+
+          // Update online status in background non-blockingly for instant sign in
+          supabase
             .from('profiles')
             .update({ is_online: true, last_seen: new Date().toISOString() })
-            .eq('id', profile.id);
+            .eq('id', profile.id)
+            .then(() => {})
+            .catch((e) => console.warn('Non-blocking online status update error:', e));
 
-          onAuthComplete({ ...profile, is_online: true });
+          onAuthComplete(activeProf);
         } else {
           // Fallback if profile doesn't exist yet
           const tempProfile = {
             id: authData.user.id,
             email,
-            username: email.split('@')[0],
+            username: email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, ''),
             display_name: email.split('@')[0],
             about: 'Hey there! I am using VyperVic.',
             is_online: true,
             last_seen: new Date().toISOString(),
           };
-          const { data: createdProf, error: createError } = await supabase
+
+          try {
+            localStorage.setItem('vypervic_current_user_cache', JSON.stringify(tempProfile));
+          } catch (e) {}
+
+          // Non-blocking background sync to remote table
+          supabase
             .from('profiles')
             .upsert(tempProfile)
-            .select('*')
-            .single();
+            .then(() => {})
+            .catch((err) => console.warn('Non-blocking temp profile creation:', err));
 
-          if (createError) throw createError;
-          onAuthComplete(createdProf);
+          onAuthComplete(tempProfile);
         }
       }
     } catch (err: any) {

@@ -2,13 +2,14 @@ import { useState, useEffect, memo } from 'react';
 import { supabase } from '../supabase';
 import { Profile, Group } from '../types';
 import { ArrowLeft, Search, Circle, X, Loader2, Compass, Users, Plus, Check, CheckSquare, Square, Shield, Image } from 'lucide-react';
-import { isUserOnline } from '../utils/customNames';
+import { isUserOnline, parseProfileAbout } from '../utils/customNames';
 
 interface SearchScreenProps {
   currentUser: Profile;
   onCancel: () => void;
   onSelectUser: (peer: Profile) => void;
   allProfiles?: Profile[];
+  existingContactIds?: string[];
   onCreateGroup?: (name: string, icon: string, memberIds: string[]) => void;
 }
 
@@ -17,6 +18,7 @@ function SearchScreen({
   onCancel, 
   onSelectUser, 
   allProfiles = [],
+  existingContactIds = [],
   onCreateGroup 
 }: SearchScreenProps) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -24,6 +26,9 @@ function SearchScreen({
   const [localResults, setLocalResults] = useState<Profile[]>([]);
   const [suggestions, setSuggestions] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const contactSet = new Set(existingContactIds);
+  const isUnknown = (p: Profile) => p.id !== currentUser.id && !contactSet.has(p.id);
 
   // Group creation states
   const [isGroupCreateMode, setIsGroupCreateMode] = useState(false);
@@ -45,7 +50,7 @@ function SearchScreen({
     };
   }, []);
 
-  // Fetch initial suggestions
+  // Fetch initial suggestions for unknown users
   useEffect(() => {
     const fetchSuggestions = async () => {
       try {
@@ -54,12 +59,13 @@ function SearchScreen({
           .select('*')
           .neq('id', currentUser.id)
           .order('display_name', { ascending: true })
-          .limit(10);
+          .limit(30);
 
         if (!error && data) {
-          setSuggestions(data);
+          const unknownOnly = data.filter(isUnknown);
+          setSuggestions(unknownOnly);
           try {
-            localStorage.setItem('vypervic_suggestions_cache', JSON.stringify(data));
+            localStorage.setItem('vypervic_suggestions_cache', JSON.stringify(unknownOnly));
           } catch (storageErr) {
             console.warn('Could not write suggestions cache to localStorage:', storageErr);
           }
@@ -67,24 +73,26 @@ function SearchScreen({
           // Fallback to cache or prop list
           const cache = localStorage.getItem('vypervic_suggestions_cache');
           if (cache) {
-            setSuggestions(JSON.parse(cache));
+            const cached: Profile[] = JSON.parse(cache);
+            setSuggestions(cached.filter(isUnknown));
           } else if (allProfiles && allProfiles.length > 0) {
-            setSuggestions(allProfiles.filter(p => p.id !== currentUser.id).slice(0, 10));
+            setSuggestions(allProfiles.filter(isUnknown).slice(0, 10));
           }
         }
       } catch (err) {
         console.error('Error fetching suggestions:', err);
         const cache = localStorage.getItem('vypervic_suggestions_cache');
         if (cache) {
-          setSuggestions(JSON.parse(cache));
+          const cached: Profile[] = JSON.parse(cache);
+          setSuggestions(cached.filter(isUnknown));
         } else if (allProfiles && allProfiles.length > 0) {
-          setSuggestions(allProfiles.filter(p => p.id !== currentUser.id).slice(0, 10));
+          setSuggestions(allProfiles.filter(isUnknown).slice(0, 10));
         }
       }
     };
 
     fetchSuggestions();
-  }, [currentUser, allProfiles]);
+  }, [currentUser.id, allProfiles, existingContactIds]);
 
   // Instant local filtering
   useEffect(() => {
@@ -169,7 +177,7 @@ function SearchScreen({
         });
         return combined;
       })()
-    : suggestions;
+    : [];
 
   // Toggle member selection for group creation
   const handleToggleMember = (userId: string) => {
@@ -450,42 +458,45 @@ function SearchScreen({
           </div>
         )}
 
-        <div className="mb-4">
-          <h3 className="text-[11px] font-bold tracking-[1.5px] text-[#5a6478] uppercase px-1.5 flex items-center gap-1.5">
-            {searchQuery.trim() ? (
-              <>
-                <span>Search Results</span>
-                {loading && <Loader2 className="w-3 h-3 animate-spin text-[#20e3a2]" />}
-              </>
-            ) : (
-              <>
-                <Compass className="w-3.5 h-3.5 text-[#7c5cff]" />
-                <span>Suggested Connections</span>
-              </>
-            )}
-          </h3>
-        </div>
-
-        {/* Profiles output list */}
-        {displayList.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-            {loading ? (
-              <Loader2 className="w-8 h-8 text-[#20e3a2] animate-spin mb-3" />
-            ) : (
-              <>
-                <div className="w-12 h-12 rounded-full bg-[#161d28] border border-[#212a38] flex items-center justify-center mb-3">
-                  <X className="w-5 h-5 text-[#ff5470]" />
-                </div>
-                <p className="text-xs font-bold text-white mb-1">No users found</p>
-                <p className="text-[11px] text-[#8d97ab] max-w-xs">
-                  We couldn't locate any users matching "{searchQuery}". Check the spelling or connection status.
-                </p>
-              </>
-            )}
+        {!searchQuery.trim() ? (
+          <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-[#161d28] border border-[#212a38] flex items-center justify-center mb-3">
+              <Search className="w-5 h-5 text-[#5a6478]" />
+            </div>
+            <p className="text-xs font-bold text-white mb-1">Search for contacts</p>
+            <p className="text-[11px] text-[#8d97ab] max-w-xs">
+              Type a name or username in the search box above to find contacts.
+            </p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {displayList.map((user) => {
+          <>
+            <div className="mb-4">
+              <h3 className="text-[11px] font-bold tracking-[1.5px] text-[#5a6478] uppercase px-1.5 flex items-center gap-1.5">
+                <span>Search Results</span>
+                {loading && <Loader2 className="w-3 h-3 animate-spin text-[#20e3a2]" />}
+              </h3>
+            </div>
+
+            {/* Profiles output list */}
+            {displayList.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                {loading ? (
+                  <Loader2 className="w-8 h-8 text-[#20e3a2] animate-spin mb-3" />
+                ) : (
+                  <>
+                    <div className="w-12 h-12 rounded-full bg-[#161d28] border border-[#212a38] flex items-center justify-center mb-3">
+                      <X className="w-5 h-5 text-[#ff5470]" />
+                    </div>
+                    <p className="text-xs font-bold text-white mb-1">No users found</p>
+                    <p className="text-[11px] text-[#8d97ab] max-w-xs">
+                      We couldn't locate any users matching "{searchQuery}". Check the spelling or try another name.
+                    </p>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {displayList.map((user) => {
               const seed = user.username?.charCodeAt(0) || 0;
               return (
                 <button
@@ -530,18 +541,24 @@ function SearchScreen({
                     <div className="text-[11.5px] text-[#8d97ab] font-mono mt-0.5 truncate">
                       @{user.username}
                     </div>
-                    {user.about && (
-                      <p className="text-[11px] text-[#5a6478] truncate mt-1">
-                        {user.about}
-                      </p>
-                    )}
+                    {(() => {
+                      const { about } = parseProfileAbout(user.about, user.id);
+                      const displayBio = about || 'Hey there! I am using VyperVic.';
+                      return (
+                        <p className="text-[11px] text-[#5a6478] truncate mt-1">
+                          {displayBio}
+                        </p>
+                      );
+                    })()}
                   </div>
                 </button>
               );
             })}
           </div>
         )}
-      </div>
+      </>
+    )}
+  </div>
     </div>
   );
 }

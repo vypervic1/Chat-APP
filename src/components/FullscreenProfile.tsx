@@ -185,7 +185,7 @@ export default function FullscreenProfile({
     title = profile.display_name || profile.username || 'Operator';
     subTitle = `@${profile.username || 'unknown'}`;
     parsedAbout = parseProfileAbout(profile.about);
-    bioText = parsedAbout.about || 'No operator bio provided. Communication route is active.';
+    bioText = parsedAbout.about || 'Hey there! I am using VyperVic.';
     badgeText = formatLastSeen(profile);
     badgeStyle = isUserOnline(profile) 
       ? 'bg-emerald-500/10 text-[#20e3a2] border-emerald-500/20' 
@@ -221,47 +221,52 @@ export default function FullscreenProfile({
 
   return (
     <div className="fixed inset-0 bg-[#080b10] z-50 flex flex-col md:flex-row animate-fade-in text-left overflow-hidden screen-gpu" style={{ willChange: 'transform', transform: 'translateZ(0)' }}>
-      {/* Back button and screen header */}
-      <div className="absolute top-[calc(var(--safe-top)+12px)] left-4 z-50">
-        <button
-          onClick={onClose}
-          className="w-10 h-10 rounded-full bg-black/60 border border-white/10 flex items-center justify-center text-white hover:text-[#20e3a2] cursor-pointer hover:bg-white/10 transition-all shadow-lg backdrop-blur-md"
-          title="Back to portal"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-      </div>
-
       {/* LEFT COLUMN: Main profile details card */}
       <div className={`w-full ${isUser ? 'max-w-xl mx-auto border-x border-[#212a38]' : 'md:w-[360px] shrink-0 border-b md:border-b-0 md:border-r border-[#212a38]'} flex flex-col relative overflow-y-auto`}>
         {/* Profile Header Image/Gradient Background */}
-        <div className={`${isGroup ? 'h-32' : 'h-40'} relative flex items-end justify-center overflow-hidden bg-gradient-to-r from-[#7c5cff]/20 to-[#20e3a2]/20`}>
+        <div 
+          onClick={() => {
+            if (coverUrl) setShowZoomedCover(true);
+          }}
+          className={`${isGroup ? 'h-36' : 'h-48'} relative flex items-end justify-center overflow-hidden bg-gradient-to-r from-[#7c5cff]/20 to-[#20e3a2]/20 ${coverUrl ? 'cursor-pointer group' : ''}`}
+        >
+          {/* Back button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="absolute top-3.5 left-3.5 sm:left-4 z-30 px-3 py-1.5 rounded-full bg-black/75 border border-white/20 flex items-center gap-1.5 text-white hover:text-[#20e3a2] cursor-pointer hover:bg-black/90 transition-all shadow-xl backdrop-blur-md"
+            title="Back"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span className="text-xs font-bold font-sans">Back</span>
+          </button>
+
           {coverUrl ? (
             <img
               src={coverUrl}
               alt="Cover"
-              className="absolute inset-0 w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
-              onClick={() => setShowZoomedCover(true)}
+              className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
               referrerPolicy="no-referrer"
             />
           ) : null}
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#080b10]/40 to-[#080b10]" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/30 pointer-events-none z-10" />
           
           {/* Badge at top right */}
-          <span className={`absolute top-[calc(var(--safe-top)+12px)] right-4 px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${badgeStyle} backdrop-blur-sm shadow-md whitespace-nowrap overflow-hidden text-ellipsis truncate max-w-[160px] sm:max-w-[220px]`}>
+          <span className={`absolute top-3.5 right-3.5 sm:right-4 z-30 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border ${badgeStyle} backdrop-blur-sm shadow-md whitespace-nowrap overflow-hidden text-ellipsis truncate max-w-[160px] sm:max-w-[220px] pointer-events-none`}>
             {badgeText}
           </span>
         </div>
 
         {/* Profile Content Container */}
-        <div className="px-5 relative -mt-10 pb-4">
+        <div className="px-5 relative -mt-10 pb-4 z-20">
           {/* Profile Big Avatar (Tapping here opens full screen) */}
           <div className="flex justify-center md:justify-start mb-2">
             <div 
               onClick={() => setShowZoomedAvatar(true)}
-              className={`${isGroup ? 'w-16 h-16 text-2xl' : 'w-20 h-20 text-3xl'} rounded-full border-4 border-[#080b10] flex items-center justify-center text-white font-black shadow-2xl relative overflow-hidden bg-[#161d28] cursor-pointer hover:scale-105 active:scale-95 transition-transform`}
+              className={`${isGroup ? 'w-16 h-16 text-2xl' : 'w-20 h-20 text-3xl'} rounded-full border-4 border-[#080b10] flex items-center justify-center text-white font-black shadow-2xl relative overflow-hidden bg-[#161d28] cursor-pointer hover:scale-105 active:scale-95 transition-transform z-20`}
               style={bgStyle}
-              title="View in Full Screen"
             >
               {iconContent}
             </div>
@@ -326,13 +331,6 @@ export default function FullscreenProfile({
             <p className="text-[11px] text-[#8d97ab] font-mono mt-0.5">
               {subTitle}
             </p>
-
-            {parsedAbout?.thinking && (
-              <div className="mt-2.5 bg-[#20e3a2]/10 border border-[#20e3a2]/30 px-3 py-1.5 rounded-xl text-xs font-semibold text-[#20e3a2] flex items-center gap-2 max-w-full overflow-hidden">
-                <span className="shrink-0 text-sm">💭</span>
-                <span className="text-white leading-tight font-sans whitespace-nowrap overflow-hidden text-ellipsis truncate block min-w-0 flex-1">{parsedAbout.thinking}</span>
-              </div>
-            )}
           </div>
 
           {/* Action buttons for platform users */}
@@ -548,7 +546,7 @@ export default function FullscreenProfile({
           {/* Back button */}
           <button
             onClick={(e) => { e.stopPropagation(); setShowZoomedCover(false); }}
-            className="absolute top-[calc(var(--safe-top)+20px)] left-6 w-11 h-11 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white hover:text-[#20e3a2] hover:bg-white/15 transition-all cursor-pointer shadow-xl backdrop-blur-md animate-fade-in"
+            className="absolute top-5 left-5 w-11 h-11 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white hover:text-[#20e3a2] hover:bg-white/15 transition-all cursor-pointer shadow-xl backdrop-blur-md animate-fade-in z-30"
             title="Close Zoom"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -566,7 +564,6 @@ export default function FullscreenProfile({
               referrerPolicy="no-referrer"
             />
           </div>
-          <p className="text-[11px] text-gray-400 mt-4 font-mono uppercase tracking-wider font-semibold">Tap anywhere to zoom out</p>
         </div>
       )}
 
@@ -579,7 +576,7 @@ export default function FullscreenProfile({
           {/* Back button */}
           <button
             onClick={(e) => { e.stopPropagation(); setShowZoomedAvatar(false); }}
-            className="absolute top-[calc(var(--safe-top)+20px)] left-6 w-11 h-11 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white hover:text-[#20e3a2] hover:bg-white/15 transition-all cursor-pointer shadow-xl backdrop-blur-md animate-fade-in"
+            className="absolute top-5 left-5 w-11 h-11 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-white hover:text-[#20e3a2] hover:bg-white/15 transition-all cursor-pointer shadow-xl backdrop-blur-md animate-fade-in z-30"
             title="Close Zoom"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -612,7 +609,6 @@ export default function FullscreenProfile({
               getInitials(title)
             )}
           </div>
-          <p className="text-[11px] text-gray-400 mt-4 font-mono uppercase tracking-wider font-semibold">Tap anywhere to zoom out</p>
         </div>
       )}
     </div>

@@ -757,49 +757,64 @@ export default function CallOverlay({
 
   // 4. Camera/Mic capture and WebRTC setup activation
   useEffect(() => {
-    if (callStatus === 'accepted') {
-      const wantVideo = currentCall.type === 'video';
-      
-      // Fallback gracefully from video request to audio only if the camera is blocked or unavailable (e.g. single machine testing)
-      const grabStream = (withVideo: boolean) => {
-        return navigator.mediaDevices.getUserMedia({ video: withVideo, audio: true })
-          .catch((err) => {
-            if (withVideo) {
-              console.warn('WebRTC: Video capture failed, gracefully falling back to audio only:', err);
-              setErrorMessage('Camera blocked or busy. Connecting via audio stream.');
-              return navigator.mediaDevices.getUserMedia({ video: false, audio: true });
-            }
-            throw err;
-          });
-      };
+    if (callStatus === 'ended' || callStatus === 'rejected') {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
+      }
+      return;
+    }
 
-      grabStream(wantVideo)
-        .then(async (stream) => {
-          streamRef.current = stream;
-          if (localVideoRef.current) {
-            localVideoRef.current.srcObject = stream;
+    const wantVideo = currentCall.type === 'video';
+
+    const grabStream = (withVideo: boolean) => {
+      if (streamRef.current) {
+        return Promise.resolve(streamRef.current);
+      }
+      return navigator.mediaDevices.getUserMedia({ video: withVideo, audio: true })
+        .catch((err) => {
+          if (withVideo) {
+            console.warn('WebRTC: Video capture failed, gracefully falling back to audio only:', err);
+            setErrorMessage('Camera blocked or busy. Connecting via audio stream.');
+            return navigator.mediaDevices.getUserMedia({ video: false, audio: true });
           }
+          throw err;
+        });
+    };
 
-          // Enumerate devices once we have permission (stream loaded) to find all video inputs
-          if (wantVideo) {
-            navigator.mediaDevices.enumerateDevices()
-              .then((devices) => {
-                const videoDevices = devices.filter((d) => d.kind === 'videoinput');
-                setCameras(videoDevices);
-                const activeTrack = stream.getVideoTracks()[0];
-                if (activeTrack) {
-                  const settings = activeTrack.getSettings();
-                  if (settings.deviceId) {
-                    const idx = videoDevices.findIndex((d) => d.deviceId === settings.deviceId);
-                    if (idx !== -1) {
-                      setCurrentCameraIndex(idx);
-                    }
+    grabStream(wantVideo)
+      .then(async (stream) => {
+        streamRef.current = stream;
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
+        }
+
+        // Enumerate devices once we have permission (stream loaded) to find all video inputs
+        if (wantVideo) {
+          navigator.mediaDevices.enumerateDevices()
+            .then((devices) => {
+              const videoDevices = devices.filter((d) => d.kind === 'videoinput');
+              setCameras(videoDevices);
+              const activeTrack = stream.getVideoTracks()[0];
+              if (activeTrack) {
+                const settings = activeTrack.getSettings();
+                if (settings.deviceId) {
+                  const idx = videoDevices.findIndex((d) => d.deviceId === settings.deviceId);
+                  if (idx !== -1) {
+                    setCurrentCameraIndex(idx);
                   }
                 }
-              })
-              .catch((err) => console.warn('WebRTC: Device enumeration failed:', err));
-          }
+              }
+            })
+            .catch((err) => console.warn('WebRTC: Device enumeration failed:', err));
+        }
 
+        // Initialize WebRTC connection only when call has been accepted
+        if (callStatus === 'accepted') {
           // If testing in a self-test call (calling oneself), loop back video for instant visual verification
           const isSelfDemo = currentCall.caller_id === currentCall.receiver_id;
           if (isSelfDemo) {
@@ -838,39 +853,17 @@ export default function CallOverlay({
             // Send ready signal to the caller so they can re-trigger and negotiate successfully
             sendSignal('ready');
           }
-        })
-        .catch((err) => {
-          console.error('Camera/mic media stream permission error:', err);
-          setErrorMessage('Camera/Microphone access was denied. Running in simulated fallback mode.');
-          
-          // Loopback simulation fallback for headless or restricted browser security
-          if (currentCall.type === 'video') {
-            setErrorMessage('Permissions unavailable. Simulated calling session initiated.');
-          }
-        });
-    } else {
-      // Cleanup streams/connections on hangup/rejection
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-      }
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.close();
-        peerConnectionRef.current = null;
-      }
-      remoteStreamRef.current = null;
-    }
-
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-      }
-      if (peerConnectionRef.current) {
-        peerConnectionRef.current.close();
-      }
-      remoteStreamRef.current = null;
-    };
-  }, [callStatus]);
+        }
+      })
+      .catch((err) => {
+        console.error('Camera/mic media stream permission error:', err);
+        setErrorMessage('Camera/Microphone access was denied. Running in simulated fallback mode.');
+        
+        if (currentCall.type === 'video') {
+          setErrorMessage('Permissions unavailable. Simulated calling session initiated.');
+        }
+      });
+  }, [callStatus, currentCall.id, currentCall.type, currentCall.caller_id, currentCall.receiver_id, currentUser.id, isCaller]);
 
   // Handle Mute
   useEffect(() => {
@@ -1347,9 +1340,25 @@ export default function CallOverlay({
         </button>
       </div>
 
-      {/* Background Video layout vs equal grid */}
+      {/* Background Video layout vs calling camera view */}
       {callStatus === 'accepted' ? (
         renderParticipantsGrid()
+      ) : currentCall.type === 'video' && isVideoOn ? (
+        <div className="absolute inset-0 z-0 bg-[#080b10]">
+          <video
+            ref={(el) => {
+              localVideoRef.current = el;
+              if (el && streamRef.current && el.srcObject !== streamRef.current) {
+                el.srcObject = streamRef.current;
+              }
+            }}
+            autoPlay
+            playsInline
+            muted
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/30 to-black/80 pointer-events-none" />
+        </div>
       ) : (
         <>
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(124,92,255,0.18),transparent_60%)] pointer-events-none" />

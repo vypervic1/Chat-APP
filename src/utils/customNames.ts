@@ -53,6 +53,10 @@ export function parseProfileAbout(aboutStr: string | null, userId?: string) {
   let coverUrl: string | null = null;
   let about = aboutStr || '';
 
+  if (!aboutStr) {
+    return { thinking: null, coverUrl: null, about: '' };
+  }
+
   // Check local cache fallback first if userId provided
   if (userId) {
     try {
@@ -63,36 +67,45 @@ export function parseProfileAbout(aboutStr: string | null, userId?: string) {
     } catch (e) {}
   }
 
-  // Parse thinking if present at the start
-  const thinkingMatch = about.match(/^\[thinking:(.*?)\]/);
-  if (thinkingMatch) {
-    try {
-      thinking = decodeURIComponent(thinkingMatch[1]);
-    } catch (e) {
-      thinking = thinkingMatch[1];
-    }
-    if (thinking) {
-      thinking = thinking.replace(/[\r\n]+/g, ' ').trim();
-    }
-    about = about.substring(thinkingMatch[0].length);
-  }
+  // Extract metadata tags repeatedly at start regardless of order
+  let matched = true;
+  while (matched) {
+    matched = false;
 
-  // Parse coverUrl if present and not already found locally
-  const coverMatch = about.match(/^\[cover:([\s\S]*?)\]/);
-  if (coverMatch) {
-    if (!coverUrl) {
+    const thinkingMatch = about.match(/^\[thinking:(.*?)\]/);
+    if (thinkingMatch) {
+      matched = true;
       try {
-        coverUrl = decodeURIComponent(coverMatch[1]);
+        thinking = decodeURIComponent(thinkingMatch[1]);
       } catch (e) {
-        coverUrl = coverMatch[1];
+        thinking = thinkingMatch[1];
       }
+      if (thinking) {
+        thinking = thinking.replace(/[\r\n]+/g, ' ').trim();
+      }
+      about = about.substring(thinkingMatch[0].length);
+      continue;
     }
-    about = about.substring(coverMatch[0].length);
+
+    const coverMatch = about.match(/^\[cover:([\s\S]*?)\]/);
+    if (coverMatch) {
+      matched = true;
+      if (!coverUrl) {
+        try {
+          coverUrl = decodeURIComponent(coverMatch[1]);
+        } catch (e) {
+          coverUrl = coverMatch[1];
+        }
+      }
+      about = about.substring(coverMatch[0].length);
+      continue;
+    }
   }
 
-  if (!about && !thinking && !coverUrl) {
-    about = '';
-  }
+  // Fallback strip for any inline or stray metadata tags
+  about = about.replace(/\[thinking:[\s\S]*?\]/g, '');
+  about = about.replace(/\[cover:[\s\S]*?\]/g, '');
+  about = about.trim();
 
   return { thinking, coverUrl, about };
 }

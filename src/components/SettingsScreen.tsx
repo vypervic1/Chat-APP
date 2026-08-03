@@ -482,11 +482,7 @@ function SettingsScreen({
             ) : null}
             
             {/* Dark overlay on hover */}
-            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-              <span className="text-[11px] font-bold text-white bg-black/60 px-3 py-1 rounded-full border border-white/10 backdrop-blur-sm">
-                Tap to Zoom
-              </span>
-            </div>
+            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
 
             {/* Top-Right Edit Icon Button to Change Cover */}
             <button
@@ -1089,9 +1085,6 @@ function SettingsScreen({
               className="max-w-full max-h-[75vh] object-contain rounded-2xl shadow-2xl border border-white/10 animate-zoom-in"
               referrerPolicy="no-referrer"
             />
-            <p className="text-xs text-gray-400 mt-4 font-mono uppercase tracking-wider font-semibold">
-              Tap anywhere to zoom out
-            </p>
           </div>
         </div>
       )}

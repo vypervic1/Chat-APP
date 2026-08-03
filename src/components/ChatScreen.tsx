@@ -1303,16 +1303,12 @@ function ChatScreen({
     });
   }, [chatMessages, currentUser.id, peerProfile, currentGroup, allProfiles]);
 
-  // Filtered search messages by keyword or sender
+  // Filtered search messages by keyword
   const filteredSearchMessages = useMemo(() => {
     if (!showSearchMessages) return [];
     const query = searchKeyword.toLowerCase().trim();
 
     return chatMessages.filter((msg) => {
-      if (searchSenderId !== 'all' && msg.sender_id !== searchSenderId) {
-        return false;
-      }
-
       if (!query) return true;
 
       let textToMatch = msg.text || '';
@@ -1338,7 +1334,7 @@ function ChatScreen({
 
       return matchesText || matchesFile || matchesSenderName;
     });
-  }, [chatMessages, searchKeyword, searchSenderId, showSearchMessages, allProfiles, currentUser.id]);
+  }, [chatMessages, searchKeyword, showSearchMessages, allProfiles, currentUser.id]);
 
   const handleJumpToMessage = (msgId: string) => {
     setShowSearchMessages(false);
@@ -3571,8 +3567,31 @@ function ChatScreen({
               <X className="w-4 h-4" />
             </button>
 
-            {/* Profile banner gradient background */}
-            <div className="h-28 bg-gradient-to-r from-[#7c5cff] to-[#20e3a2] opacity-80" />
+            {/* Profile banner gradient or cover photo background */}
+            {(() => {
+              const parsed = parseProfileAbout(selectedUserProfile.about, selectedUserProfile.id);
+              const userCoverUrl = parsed.coverUrl;
+              return (
+                <div 
+                  onClick={() => {
+                    if (onViewProfileDetail) {
+                      onViewProfileDetail('user', selectedUserProfile);
+                    }
+                  }}
+                  className={`h-32 bg-gradient-to-r from-[#7c5cff]/30 to-[#20e3a2]/30 relative overflow-hidden group cursor-pointer`}
+                  title="View full profile & zoom cover"
+                >
+                  {userCoverUrl ? (
+                    <img
+                      src={userCoverUrl}
+                      alt="Cover"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : null}
+                </div>
+              );
+            })()}
 
             {/* Avatar positioning overlap */}
             <div className="px-6 pb-6 relative">
@@ -3613,12 +3632,18 @@ function ChatScreen({
                 @{selectedUserProfile.username}
               </p>
 
-              <div className="mt-4 pt-4 border-t border-[#212a38]">
-                <p className="text-[10px] text-[#5a6478] uppercase font-mono font-bold tracking-wider">Biography / About</p>
-                <p className="text-xs text-[#eef1f6] mt-1 leading-relaxed italic bg-black/15 p-2.5 rounded-xl border border-white/5">
-                  "{selectedUserProfile.about || 'No description provided.'}"
-                </p>
-              </div>
+              {(() => {
+                const { about } = parseProfileAbout(selectedUserProfile.about, selectedUserProfile.id);
+                const displayBio = about || 'Hey there! I am using VyperVic.';
+                return (
+                  <div className="mt-4 pt-4 border-t border-[#212a38]">
+                    <p className="text-[10px] text-[#5a6478] uppercase font-mono font-bold tracking-wider text-left">Biography / Bio</p>
+                    <p className="text-xs text-[#eef1f6] mt-1 text-left leading-relaxed italic bg-black/15 p-2.5 rounded-xl border border-white/5">
+                      "{displayBio}"
+                    </p>
+                  </div>
+                );
+              })()}
 
               {/* Action: Send Direct Message */}
               {selectedUserProfile.id !== currentUser.id && onSelectChat && (
@@ -3716,12 +3741,12 @@ function ChatScreen({
                 <span>Message Search</span>
               </h3>
               <p className="text-[10px] text-[#8d97ab] truncate mt-0.5">
-                Filter messages in this chat by keyword or sender
+                Search messages in this chat session
               </p>
             </div>
           </div>
 
-          {/* Search Inputs (Keyword & Sender Filter) */}
+          {/* Search Inputs (Keyword) */}
           <div className="space-y-3 shrink-0 mb-4">
             {/* Keyword Input */}
             <div className="relative flex items-center">
@@ -3730,7 +3755,7 @@ function ChatScreen({
                 type="text"
                 value={searchKeyword}
                 onChange={(e) => setSearchKeyword(e.target.value)}
-                placeholder="Search messages by keyword..."
+                placeholder="Search messages in this chat..."
                 className="w-full bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl pl-10 pr-10 py-2.5 text-xs font-semibold text-white placeholder-[#5a6478] outline-none focus:border-[#20e3a2]/70 focus:bg-white/10 transition-all shadow-inner"
                 autoFocus
               />
@@ -3744,49 +3769,6 @@ function ChatScreen({
                 </button>
               )}
             </div>
-
-            {/* Sender Filter Chips */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-              <span className="text-[10px] font-bold text-[#8d97ab] uppercase font-mono shrink-0 mr-1">
-                Sender:
-              </span>
-              <button
-                type="button"
-                onClick={() => setSearchSenderId('all')}
-                className={`px-3 py-1.5 rounded-xl text-[10.5px] font-bold transition-all shrink-0 cursor-pointer backdrop-blur-lg ${
-                  searchSenderId === 'all'
-                    ? 'bg-[#20e3a2] text-black shadow-md shadow-[#20e3a2]/20'
-                    : 'bg-white/5 border border-white/10 text-[#8d97ab] hover:text-white hover:bg-white/10'
-                }`}
-              >
-                All Senders
-              </button>
-
-              {chatParticipants.map((sender) => {
-                const isSelected = searchSenderId === sender.id;
-                return (
-                  <button
-                    key={sender.id}
-                    type="button"
-                    onClick={() => setSearchSenderId(sender.id)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10.5px] font-bold transition-all shrink-0 cursor-pointer backdrop-blur-lg ${
-                      isSelected
-                        ? 'bg-[#7c5cff] text-white shadow-md shadow-[#7c5cff]/20'
-                        : 'bg-white/5 border border-white/10 text-[#8d97ab] hover:text-white hover:bg-white/10'
-                    }`}
-                  >
-                    <span className="w-4 h-4 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-[8px] bg-black/30 font-bold">
-                      {sender.avatar ? (
-                        <img src={sender.avatar} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      ) : (
-                        sender.name.substring(0, 1).toUpperCase()
-                      )}
-                    </span>
-                    <span className="truncate max-w-[110px]">{sender.name}</span>
-                  </button>
-                );
-              })}
-            </div>
           </div>
 
           {/* Results Summary Count */}
@@ -3794,16 +3776,13 @@ function ChatScreen({
             <span>
               {filteredSearchMessages.length} message{filteredSearchMessages.length === 1 ? '' : 's'} found
             </span>
-            {(searchKeyword || searchSenderId !== 'all') && (
+            {searchKeyword && (
               <button
                 type="button"
-                onClick={() => {
-                  setSearchKeyword('');
-                  setSearchSenderId('all');
-                }}
+                onClick={() => setSearchKeyword('')}
                 className="text-[10px] text-[#20e3a2] hover:underline cursor-pointer font-bold"
               >
-                Reset filters
+                Clear
               </button>
             )}
           </div>
@@ -3815,7 +3794,7 @@ function ChatScreen({
                 <Search className="w-10 h-10 text-[#5a6478] mb-3 opacity-40" />
                 <p className="text-xs font-bold text-white mb-1">No matching messages</p>
                 <p className="text-[10px] text-[#8d97ab] max-w-xs">
-                  Try adjusting your search keyword or selecting a different sender filter.
+                  Try adjusting your search keyword.
                 </p>
               </div>
             ) : (

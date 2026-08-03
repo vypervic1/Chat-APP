@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, memo, useRef } from 'react';
 import { Profile, Message, Group } from '../types';
-import { Search, Settings, MessageSquare, Shield, Circle, User, Bell, Users, WifiOff, MoreHorizontal, Archive, Lock, X, Star, ArrowLeft, Paperclip, Pin, Trash2, Mail, CheckCircle, Unlock, Image } from 'lucide-react';
+import { Search, Settings, MessageSquare, Shield, Circle, User, Bell, BellOff, Users, WifiOff, MoreHorizontal, Archive, Lock, X, Star, ArrowLeft, Paperclip, Pin, Trash2, Mail, CheckCircle, Unlock, Image } from 'lucide-react';
 import { getContactDisplayName, isUserOnline } from '../utils/customNames';
 
 interface ChatListScreenProps {
@@ -81,6 +81,13 @@ function ChatListScreen({
     } catch { return []; }
   });
 
+  const [mutedChats, setMutedChats] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('vyper_muted_chats');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+
   // Long press active menu context state
   const [activeLongPressChat, setActiveLongPressChat] = useState<{
     chatId: string;
@@ -126,6 +133,15 @@ function ChatListScreen({
     setUnreadMarkedChats((prev) => {
       const updated = prev.includes(chatId) ? prev.filter((id) => id !== chatId) : [...prev, chatId];
       try { localStorage.setItem('vyper_unread_marked_chats', JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+    setActiveLongPressChat(null);
+  };
+
+  const toggleMuteChat = (chatId: string) => {
+    setMutedChats((prev) => {
+      const updated = prev.includes(chatId) ? prev.filter((id) => id !== chatId) : [...prev, chatId];
+      try { localStorage.setItem('vyper_muted_chats', JSON.stringify(updated)); } catch {}
       return updated;
     });
     setActiveLongPressChat(null);
@@ -799,6 +815,7 @@ function ChatListScreen({
                         <div className="flex items-center justify-between">
                           <span className="font-display font-bold text-[14.5px] text-white group-hover:text-[#20e3a2] transition-colors truncate flex items-center gap-1.5">
                             {isPinned && <Pin className="w-3.5 h-3.5 text-[#20e3a2] fill-current shrink-0" />}
+                            {mutedChats.includes(session.chatId) && <BellOff className="w-3.5 h-3.5 text-[#ff5470] shrink-0" />}
                             <span className="truncate">{session.name}</span>
                             <span className="text-[9px] text-[#20e3a2] font-mono font-bold ml-1 px-1 rounded bg-[#20e3a2]/10 border border-[#20e3a2]/15 font-sans shrink-0">GROUP</span>
                           </span>
@@ -897,6 +914,7 @@ function ChatListScreen({
                         <div className="flex items-center justify-between">
                           <span className="font-display font-bold text-[14.5px] text-white group-hover:text-[#7c5cff] transition-colors truncate flex items-center gap-1.5">
                             {isPinned && <Pin className="w-3.5 h-3.5 text-[#20e3a2] fill-current shrink-0" />}
+                            {mutedChats.includes(session.chatId) && <BellOff className="w-3.5 h-3.5 text-[#ff5470] shrink-0" />}
                             <span className="truncate">{getContactDisplayName(peer)}</span>
                           </span>
                           <div className="flex items-center gap-2 flex-shrink-0">
@@ -1003,6 +1021,19 @@ function ChatListScreen({
                 <span className="flex items-center gap-3">
                   <Image className="w-4 h-4 text-[#7c5cff]" />
                   <span>Chat Media</span>
+                </span>
+                <span className="text-xs text-white/40 font-mono">⌘M</span>
+              </button>
+
+              {/* Mute / Unmute Chat */}
+              <button
+                type="button"
+                onClick={() => toggleMuteChat(activeLongPressChat.chatId)}
+                className="w-full px-4 py-3.5 flex items-center justify-between text-left text-sm font-semibold text-white hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <span className="flex items-center gap-3">
+                  <BellOff className={`w-4 h-4 ${mutedChats.includes(activeLongPressChat.chatId) ? 'text-[#ff5470]' : 'text-white/70'}`} />
+                  <span>{mutedChats.includes(activeLongPressChat.chatId) ? 'Unmute Chat' : 'Mute Chat'}</span>
                 </span>
                 <span className="text-xs text-white/40 font-mono">⌘M</span>
               </button>

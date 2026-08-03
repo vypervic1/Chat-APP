@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import NotificationCard from './components/NotificationCard';
 import { PushNotification, Profile, Message, Call, Group, ThemeConfig } from './types';
 import { Bell, AtSign, Smartphone, MessageSquare, X, Send, Loader2, Sparkles, AlertTriangle, Phone, Users, Settings } from 'lucide-react';
@@ -57,7 +57,14 @@ export function addOrUpdateMessage(prev: Message[], newMsg: Message): Message[] 
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
-  const [currentUser, setCurrentUser] = useState<Profile | null>(null);
+  const [currentUser, setCurrentUser] = useState<Profile | null>(() => {
+    try {
+      const saved = localStorage.getItem('vypervic_current_user_cache');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const [loading, setLoading] = useState(true);
 
   // Real-time synchronization state
@@ -66,6 +73,33 @@ export default function App() {
   const [activeCall, setActiveCall] = useState<Call | null>(null);
   const [groupCallStatuses, setGroupCallStatuses] = useState<Record<string, string>>({});
   const [callHistory, setCallHistory] = useState<Call[]>([]);
+
+  // Track contacts that the user has chatted or interacted with
+  const existingContactIds = useMemo(() => {
+    if (!currentUser) return [];
+    const set = new Set<string>();
+
+    messagesList.forEach((m) => {
+      if (m.sender_id && m.sender_id !== currentUser.id) set.add(m.sender_id);
+      if (m.receiver_id && m.receiver_id !== currentUser.id) set.add(m.receiver_id);
+      if (m.chat_id && m.chat_id.startsWith('dm:')) {
+        const parts = m.chat_id.replace('dm:', '').split(':');
+        parts.forEach((id) => {
+          if (id && id !== currentUser.id) set.add(id);
+        });
+      }
+    });
+
+    try {
+      const saved = localStorage.getItem('vyper_custom_display_names');
+      if (saved) {
+        const map = JSON.parse(saved);
+        Object.keys(map).forEach((id) => set.add(id));
+      }
+    } catch (e) {}
+
+    return Array.from(set);
+  }, [currentUser, messagesList]);
 
   const [appTheme, setAppTheme] = useState<string>(() => {
     return localStorage.getItem('vypervic_app_theme') || 'liquid-glass';
@@ -919,14 +953,15 @@ export default function App() {
       }
 
       if (prof) {
-        // Update online status
-        const { data: updatedProf } = await supabase
+        // Update online status in background non-blockingly for instant login
+        supabase
           .from('profiles')
           .update({ is_online: true, last_seen: new Date().toISOString() })
           .eq('id', userId)
-          .select('*')
-          .single();
-        return updatedProf || prof;
+          .then(() => {})
+          .catch((e) => console.warn('Non-blocking online status update error:', e));
+
+        return { ...prof, is_online: true };
       }
 
       // If we got here, profile with id = userId does not exist.
@@ -1048,6 +1083,10 @@ export default function App() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
+          if (currentUserRef.current && currentUserRef.current.id === session.user.id) {
+            setLoading(false);
+            return;
+          }
           const prof = await getOrCreateProfile(session.user.id, session.user.email || '');
           if (prof) {
             setCurrentUser(prof);
@@ -1056,6 +1095,7 @@ export default function App() {
             } catch (e) {}
           }
         } else {
+          setCurrentUser(null);
           localStorage.removeItem('vypervic_current_user_cache');
         }
       } catch (err) {
@@ -1078,6 +1118,9 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       try {
         if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
+          if (currentUserRef.current && currentUserRef.current.id === session.user.id) {
+            return;
+          }
           const prof = await getOrCreateProfile(session.user.id, session.user.email || '');
           if (prof) {
             setCurrentUser(prof);
@@ -1090,8 +1133,7 @@ export default function App() {
           localStorage.removeItem('vypervic_current_user_cache');
         }
       } catch (err) {
-        console.error('Error in onAuthStateChange:', err);
-        // Fallback to cache for SIGNED_IN event if auth is failed offline
+        console.error('Error in onAuthStateChange:', event, err);
         if (event === 'SIGNED_IN') {
           const cache = localStorage.getItem('vypervic_current_user_cache');
           if (cache) {
@@ -2474,13 +2516,9 @@ export default function App() {
                   currentUser={currentUser}
                   onCancel={() => setActiveScreen('chatList')}
                   allProfiles={allProfiles}
+                  existingContactIds={existingContactIds}
                   onSelectUser={(peer) => {
-                    // Generate DM chat_id based on sorted UUIDs
-                    const sortedIds = [currentUser.id, peer.id].sort();
-                    const dmId = `dm:${sortedIds[0]}:${sortedIds[1]}`;
-                    setSelectedChatId(dmId);
-                    setSelectedPeerProfile(peer);
-                    setActiveScreen('chat');
+                    setActiveProfileView({ type: 'user', data: peer });
                   }}
                   onCreateGroup={(name, icon, memberIds) => {
                     const newGroup: Group = {
@@ -2677,6 +2715,25 @@ export default function App() {
                 onClose={() => setActiveProfileView(null)}
                 currentUser={currentUser}
                 allProfiles={allProfiles}
+                onStartDM={(peer) => {
+                  const sortedIds = [currentUser.id, peer.id].sort();
+                  const dmId = `dm:${sortedIds[0]}:${sortedIds[1]}`;
+                  setSelectedChatId(dmId);
+                  setSelectedPeerProfile(peer);
+                  setActiveProfileView(null);
+                  setActiveScreen('chat');
+                }}
+                onCall={(type, peerId) => {
+                  const peer = allProfiles.find((p) => p.id === peerId);
+                  if (peer) {
+                    setSelectedPeerProfile(peer);
+                    const sortedIds = [currentUser.id, peer.id].sort();
+                    const dmId = `dm:${sortedIds[0]}:${sortedIds[1]}`;
+                    setSelectedChatId(dmId);
+                    setActiveProfileView(null);
+                    handleInitiateCall(type);
+                  }
+                }}
               />
             )}
 
